@@ -2,3 +2,5 @@ node_modules
 dist
 .env
 .DS_Store
+demo-assets/*.png
+demo-assets/*.aiff

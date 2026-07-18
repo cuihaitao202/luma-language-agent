@@ -55,3 +55,5 @@ Codex took Luma from an empty workspace to a tested and deployed product during 
 - Final duration under three minutes.
 - Voiceover is audible and explicitly mentions Codex and GPT-5.6.
 - Show the working app, not slides alone.
+
+The ready-to-upload 1:47 video is at `demo-assets/luma-build-week-demo.mp4`.
