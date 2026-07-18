@@ -1,0 +1,17 @@
+Most adults do not need another language course. They need a patient teacher inside the life they already have. Luma turns the next real moment in your day into a lesson your brain can use.
+
+I choose one of eight languages, tell Luma what I need language for, and choose a three-minute daily rhythm. There is no placement test. Luma adapts from what I understand and say.
+
+My meeting starts soon, so Luma prepares a coffee-shop moment. First, I listen for meaning instead of translating every word. This develops the ability adults actually need under pressure: recognizing the speaker's intention.
+
+Then I say what I would genuinely order. Luma is designed to make speaking feel safe from the first minute. If microphone access is not available, the entire experience remains testable with the typing path.
+
+GPT-5.6 Terra receives the transcript through a secure server-side Responses API call. It recognizes that I communicated successfully, then chooses only one high-value refinement. Luma never turns a useful attempt into a wall of red corrections.
+
+The expression is now connected to an intention, a situation, and successful use. That is a stronger memory unit than an isolated vocabulary word.
+
+Tomorrow, “Could I get” returns inside a meeting as a request for clarification. The change of context is the point: usable transfer, not short-term memorization.
+
+I built Luma with Codex during OpenAI Build Week. Codex helped turn the adult-learning problem into this product mechanism, implemented the responsive experience and secure Cloudflare worker, integrated GPT-5.6 structured outputs, and ran the build, deployment, and end-to-end validation loop.
+
+Luma makes the learner's life the curriculum: hear it, say it, refine one thing, and meet it again before it disappears.
