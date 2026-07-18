@@ -1,0 +1,23 @@
+{
+  "name": "luma-language-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && mkdir -p dist/server && cp worker/index.js dist/server/index.js",
+    "preview": "vite preview",
+    "server": "node server.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "latest",
+    "express": "latest",
+    "openai": "latest"
+  },
+  "devDependencies": {}
+}
