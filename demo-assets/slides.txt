@@ -1,0 +1,17 @@
+file '01-onboarding.png'
+duration 15
+file '02-home.png'
+duration 17
+file '03-listen.png'
+duration 15
+file '04-speak.png'
+duration 16
+file '05-transcript.png'
+duration 13
+file '06-feedback.png'
+duration 20
+file '07-complete.png'
+duration 14
+file '08-memory.png'
+duration 22
+file '08-memory.png'
