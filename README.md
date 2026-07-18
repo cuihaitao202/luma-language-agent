@@ -1,6 +1,10 @@
 # Luma — life is the curriculum
 
+> OpenAI Build Week 2026 · Education track · Built July 18–19, 2026
+
 An award-focused prototype of a second-language agent for busy adults. Luma turns an imminent real-world moment into a 3-minute listen → speak → refine → reappear loop. It avoids vocabulary lists, protects confidence, corrects one high-value issue at a time, and schedules language to reappear in a different context before it is forgotten.
+
+**Live demo:** https://luma-language-agent.taotao918918918.chatgpt.site
 
 ## Run the demo
 
@@ -32,10 +36,33 @@ The MVP proves four differentiators:
 
 ## OpenAI architecture
 
-- GPT-5.6 Terra via Responses API for balanced personalization and feedback.
+- GPT-5.6 Terra via the Responses API is the live reasoning layer for personalized, structured coaching feedback.
 - GPT-Realtime for the production speech-to-speech coach (the prototype uses browser speech so it is judge-ready without setup).
 - Structured output for stable feedback objects.
 - A learner memory store should keep capabilities and error patterns, not raw sensitive conversations by default.
+
+The server-side implementation is in `worker/index.js`; the API key never reaches the browser. If the live service is unavailable, the UI deliberately falls back to a deterministic judge-ready response so the full product loop remains testable.
+
+## How Codex accelerated the build
+
+This project was designed, implemented, validated, packaged, and deployed with Codex during Build Week. Codex translated the adult-learning problem into the product's central decision: **the memory unit is an intention used successfully in context, not a vocabulary word**. It then implemented the interaction, Cloudflare-compatible worker, GPT-5.6 structured-output path, responsive design, social card, privacy fallback, production checks, and deployment workflow.
+
+Key human product decisions were to organize around the learner's next real act, acknowledge communication success before correction, limit feedback to one useful refinement, and prove transfer by reusing a phrase in a different context. Codex accelerated execution and challenged the implementation against the official Build Week requirements.
+
+## Judge test path
+
+1. Open the live demo and select a target language, real-life goal, and daily rhythm.
+2. Start **Coffee before the meeting**.
+3. Listen once and select the communicative intent.
+4. Speak an order, or use **Type instead** when microphone access is unavailable.
+5. Inspect the single GPT-5.6-powered refinement and complete the memory loop.
+6. Open **Your living memory** to see the phrase transfer from coffee to a meeting.
+
+No account or test data is required.
+
+## Evaluation plan
+
+Luma's production eval suite measures four properties rather than generic fluency scores: communicative success recognition, usefulness of the single selected correction, level fit, and cross-context transfer. Safety checks reject shaming language, correction overload, sensitive inference, and unsupported claims of guaranteed learning speed.
 
 ## Build Week demo script (90 seconds)
 
@@ -44,6 +71,8 @@ The MVP proves four differentiators:
 3. Speak the order. Show that Luma celebrates communication, then gives only one refinement.
 4. Complete the moment and open **Your living memory**.
 5. Show how “Could I get…” returns tomorrow inside a meeting, proving transfer rather than memorization.
+
+The final public video also explains that Codex built the product and that GPT-5.6 Terra powers the structured coaching response, as required by the challenge.
 
 ## Next production milestones
 
