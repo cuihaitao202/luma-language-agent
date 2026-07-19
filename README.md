@@ -53,6 +53,8 @@ This project was designed, implemented, validated, packaged, and deployed with C
 
 Key human product decisions were to organize around the learner's next real act, acknowledge communication success before correction, limit feedback to one useful refinement, and prove transfer by reusing a phrase in a different context. Codex accelerated execution and challenged the implementation against the official Build Week requirements.
 
+**Build Week Codex feedback Session ID:** `019f7527-f19b-7c61-ac47-574714f7f322`
+
 ## Judge test path
 
 1. Open the live demo and select a target language, real-life goal, and daily rhythm.
