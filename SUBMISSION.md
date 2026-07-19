@@ -8,6 +8,10 @@ Education
 
 `019f7527-f19b-7c61-ac47-574714f7f322`
 
+## Public demo video
+
+https://youtu.be/ocISbvKnddQ
+
 ## Tagline
 
 Don’t study a language. Live it.
@@ -60,4 +64,4 @@ Codex took Luma from an empty workspace to a tested and deployed product during 
 - Voiceover is audible and explicitly mentions Codex and GPT-5.6.
 - Show the working app, not slides alone.
 
-The ready-to-upload 1:47 video is at `demo-assets/luma-build-week-demo.mp4`.
+The published 1:47 video is available at https://youtu.be/ocISbvKnddQ. The source file is at `demo-assets/luma-build-week-demo.mp4`.
