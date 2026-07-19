@@ -11,7 +11,8 @@ async function coach(request,env){
   const scenario=String(body.scenario||'ordering coffee').slice(0,160);
   const utterance=String(body.utterance||'').slice(0,800);
   if(!utterance.trim())return Response.json({error:'An utterance is required.'},{status:400});
-  const apiResponse=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Authorization':`Bearer ${env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({
+  const baseUrl=String(env.OPENAI_BASE_URL||'https://api.openai.com/v1').replace(/\/$/,'');
+  const apiResponse=await fetch(`${baseUrl}/responses`,{method:'POST',headers:{'Authorization':`Bearer ${env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({
     model:env.OPENAI_MODEL||'gpt-5.6-terra',reasoning:{effort:'low'},
     instructions:'You are Luma, a warm expert second-language coach for busy adults. Reward successful communication first. Give exactly one high-value refinement, never a list. Be concrete, emotionally safe, and concise. The learner must be able to use the result immediately.',
     input:`Target language: ${target}\nScenario: ${scenario}\nLearner said: ${utterance}`,
