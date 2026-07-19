@@ -12,15 +12,29 @@ async function coach(request,env){
   const utterance=String(body.utterance||'').slice(0,800);
   if(!utterance.trim())return Response.json({error:'An utterance is required.'},{status:400});
   const baseUrl=String(env.OPENAI_BASE_URL||'https://api.openai.com/v1').replace(/\/$/,'');
-  const apiResponse=await fetch(`${baseUrl}/responses`,{method:'POST',headers:{'Authorization':`Bearer ${env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({
+  const headers={'Authorization':`Bearer ${env.OPENAI_API_KEY}`,'Content-Type':'application/json'};
+  let apiResponse=await fetch(`${baseUrl}/responses`,{method:'POST',headers,body:JSON.stringify({
     model:env.OPENAI_MODEL||'gpt-5.6-terra',reasoning:{effort:'low'},
     instructions:'You are Luma, a warm expert second-language coach for busy adults. Reward successful communication first. Give exactly one high-value refinement, never a list. Be concrete, emotionally safe, and concise. The learner must be able to use the result immediately.',
     input:`Target language: ${target}\nScenario: ${scenario}\nLearner said: ${utterance}`,
     text:{format:{type:'json_schema',name:'luma_feedback',strict:true,schema:coachSchema}}
   })});
-  if(!apiResponse.ok){const detail=await apiResponse.text();return Response.json({error:'OpenAI coaching request failed.',detail:detail.slice(0,300)},{status:502})}
-  const data=await apiResponse.json();
-  const outputText=data.output_text||data.output?.flatMap(item=>item.content||[]).find(item=>item.type==='output_text')?.text;
+  let outputText;
+  if(apiResponse.status===404){
+    apiResponse=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers,body:JSON.stringify({
+      model:env.OPENAI_MODEL||'gpt-5.6-terra',
+      messages:[
+        {role:'system',content:'You are Luma, a warm expert second-language coach for busy adults. Return JSON only with exactly these keys: understood (boolean), praise, refinement, naturalVersion, memoryHook. Reward successful communication first. Give exactly one high-value refinement, never a list. Be concrete, emotionally safe, and concise.'},
+        {role:'user',content:`Target language: ${target}\nScenario: ${scenario}\nLearner said: ${utterance}`}
+      ],response_format:{type:'json_object'},max_tokens:350
+    })});
+    const chatData=await apiResponse.json();
+    outputText=chatData.choices?.[0]?.message?.content;
+  }else if(apiResponse.ok){
+    const data=await apiResponse.json();
+    outputText=data.output_text||data.output?.flatMap(item=>item.content||[]).find(item=>item.type==='output_text')?.text;
+  }
+  if(!apiResponse.ok||!outputText)return Response.json({error:'AI coaching request failed.'},{status:502});
   return Response.json(JSON.parse(outputText));
 }
 
