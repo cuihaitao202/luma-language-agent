@@ -4,6 +4,8 @@
 
 An award-focused prototype of a second-language agent for busy adults. Luma turns an imminent real-world moment into a 3-minute listen → speak → refine → reappear loop. It avoids vocabulary lists, protects confidence, corrects one high-value issue at a time, and schedules language to reappear in a different context before it is forgotten.
 
+Luma now also includes **Proactive Coach Calls**: an opt-in phone-like daily practice flow that rings first, keeps the task due until the learner responds, retries missed calls inside a user-defined window, and requires a spoken or typed real-life sentence before the call can be completed.
+
 **Live demo:** https://luma-language-agent.taotao918918918.chatgpt.site
 
 **Public demo video:** https://youtu.be/ocISbvKnddQ
@@ -39,6 +41,17 @@ The MVP proves four differentiators:
 2. **Meaning before translation**: listening begins with communicative intent.
 3. **One useful refinement**: success is acknowledged before focused feedback.
 4. **Generative reappearance**: the phrase returns in a different life context.
+5. **Proactive accountability**: the agent initiates a daily call instead of waiting for the learner to open a course.
+
+## Proactive phone mode
+
+1. Open **Turn on daily calls** on the home screen.
+2. Choose the daily time, retry interval, and retry limit.
+3. Allow browser notifications and add the generated recurring event to the phone calendar.
+4. Install Luma to the phone home screen for an app-like call experience.
+5. When Luma calls, answer and speak or type one real sentence. The task is not marked complete until a response is submitted.
+
+The recurring calendar call is the reliable closed-browser transport in this MVP. The service worker, installable manifest, notification-click route, call screen, retry state, wake lock, vibration, browser speech recognition, and GPT-5.6 coaching feedback are implemented. A production deployment can add standards-based Web Push or a SIP/telephony provider without changing the learner flow. Luma never disables operating-system emergency controls and includes an explicit pause option.
 
 ## OpenAI architecture
 
@@ -67,6 +80,7 @@ Key human product decisions were to organize around the learner's next real act,
 4. Speak an order, or use **Type instead** when microphone access is unavailable.
 5. Inspect the single GPT-5.6-powered refinement and complete the memory loop.
 6. Open **Your living memory** to see the phrase transfer from coffee to a meeting.
+7. Open **Turn on daily calls**, run **Test a call now**, answer, and submit a real sentence to verify proactive accountability.
 
 No account or test data is required.
 
@@ -86,7 +100,8 @@ The final public video also explains that Codex built the product and that GPT-5
 
 ## Next production milestones
 
-- Realtime WebRTC voice session with ephemeral server-issued credentials.
+- Realtime WebRTC voice session with server-side call creation and native speech-to-speech audio.
+- Standards-based Web Push scheduler and optional SIP phone-call transport.
 - Calendar/location opt-in signals for just-in-time scene suggestions.
 - FSRS-style per-memory scheduling calibrated from comprehension and hesitation.
 - Evals for correction usefulness, level fit, emotional safety, and cross-context transfer.
