@@ -5,7 +5,7 @@ const app=express();app.use(express.json());
 app.post('/api/coach',async(req,res)=>{
   if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'Set OPENAI_API_KEY to enable live coaching.'});
   try{
-    const client=new OpenAI();
+    const client=new OpenAI({baseURL:process.env.OPENAI_BASE_URL||'https://api.openai.com/v1'});
     const response=await client.responses.create({
       model:process.env.OPENAI_MODEL||'gpt-5.6-terra',
       reasoning:{effort:'low'},
