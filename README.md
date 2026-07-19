@@ -45,6 +45,8 @@ The MVP proves four differentiators:
 
 The server-side implementation is in `worker/index.js`; the API key never reaches the browser. If the live service is unavailable, the UI deliberately falls back to a deterministic judge-ready response so the full product loop remains testable.
 
+Sanitized runtime model verification is documented in [`MODEL_EVIDENCE.md`](MODEL_EVIDENCE.md). Successful live coaching responses also expose requested and provider-reported model identifiers in a non-sensitive `_meta` object.
+
 ## How Codex accelerated the build
 
 This project was designed, implemented, validated, packaged, and deployed with Codex during Build Week. Codex translated the adult-learning problem into the product's central decision: **the memory unit is an intention used successfully in context, not a vocabulary word**. It then implemented the interaction, Cloudflare-compatible worker, GPT-5.6 structured-output path, responsive design, social card, privacy fallback, production checks, and deployment workflow.
