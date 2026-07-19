@@ -19,8 +19,10 @@ async function coach(request,env){
     input:`Target language: ${target}\nScenario: ${scenario}\nLearner said: ${utterance}`,
     text:{format:{type:'json_schema',name:'luma_feedback',strict:true,schema:coachSchema}}
   })});
-  let outputText;
+  const requestedModel=env.OPENAI_MODEL||'gpt-5.6-terra';
+  let outputText,reportedModel,apiSurface='responses';
   if(apiResponse.status===404){
+    apiSurface='chat_completions';
     apiResponse=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers,body:JSON.stringify({
       model:env.OPENAI_MODEL||'gpt-5.6-terra',
       messages:[
@@ -30,17 +32,19 @@ async function coach(request,env){
     })});
     const chatData=await apiResponse.json();
     outputText=chatData.choices?.[0]?.message?.content;
+    reportedModel=chatData.model;
   }else if(apiResponse.ok){
     const data=await apiResponse.json();
     outputText=data.output_text||data.output?.flatMap(item=>item.content||[]).find(item=>item.type==='output_text')?.text;
+    reportedModel=data.model;
   }
   if(!apiResponse.ok||!outputText)return Response.json({error:'AI coaching request failed.'},{status:502});
-  return Response.json(JSON.parse(outputText));
+  return Response.json({...JSON.parse(outputText),_meta:{requestedModel,reportedModel:reportedModel||requestedModel,apiSurface}});
 }
 
 export default {async fetch(request,env){
   const url=new URL(request.url);
-  if(url.pathname==='/api/health')return Response.json({ok:true,liveCoach:Boolean(env.OPENAI_API_KEY)});
+  if(url.pathname==='/api/health')return Response.json({ok:true,liveCoach:Boolean(env.OPENAI_API_KEY),configuredModel:env.OPENAI_MODEL||'gpt-5.6-terra',apiStrategy:'responses_with_chat_completions_fallback'});
   if(url.pathname==='/api/coach'&&request.method==='POST'){
     try{return await coach(request,env)}catch(error){return Response.json({error:'Coach unavailable.',detail:String(error?.message||error)},{status:500})}
   }
