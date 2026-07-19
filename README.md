@@ -23,6 +23,8 @@ npm run server
 
 Never expose the API key in client-side code.
 
+For an OpenAI-compatible gateway, set `OPENAI_BASE_URL`. Eligibility-sensitive deployments should use an endpoint that can verifiably provide the configured GPT-5.6 model.
+
 ## The product thesis
 
 Most language products organize learning around a syllabus. Luma organizes it around the learner's next meaningful act. Its memory unit is not a word; it is **intent + situation + phrase + successful use**.
