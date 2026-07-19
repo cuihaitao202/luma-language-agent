@@ -12,6 +12,10 @@ Education
 
 https://youtu.be/ocISbvKnddQ
 
+## Submitted Devpost project
+
+https://devpost.com/software/luma-re407n
+
 ## Tagline
 
 Don’t study a language. Live it.

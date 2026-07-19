@@ -8,6 +8,8 @@ An award-focused prototype of a second-language agent for busy adults. Luma turn
 
 **Public demo video:** https://youtu.be/ocISbvKnddQ
 
+**OpenAI Build Week submission:** https://devpost.com/software/luma-re407n
+
 ## Run the demo
 
 ```bash
