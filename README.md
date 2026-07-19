@@ -23,7 +23,7 @@ npm run server
 
 Never expose the API key in client-side code.
 
-For an OpenAI-compatible gateway, set `OPENAI_BASE_URL`. Eligibility-sensitive deployments should use an endpoint that can verifiably provide the configured GPT-5.6 model.
+For an OpenAI-compatible gateway, set `OPENAI_BASE_URL`. Luma prefers the Responses API and falls back to Chat Completions with JSON Object mode when a compatible provider does not expose `/responses`. Eligibility-sensitive deployments should use an endpoint that can verifiably provide the configured GPT-5.6 model.
 
 ## The product thesis
 
