@@ -4,6 +4,10 @@
 
 Education
 
+## Codex feedback Session ID
+
+`019f7527-f19b-7c61-ac47-574714f7f322`
+
 ## Tagline
 
 Don’t study a language. Live it.
