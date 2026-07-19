@@ -6,6 +6,8 @@ An award-focused prototype of a second-language agent for busy adults. Luma turn
 
 **Live demo:** https://luma-language-agent.taotao918918918.chatgpt.site
 
+**Public demo video:** https://youtu.be/ocISbvKnddQ
+
 ## Run the demo
 
 ```bash
