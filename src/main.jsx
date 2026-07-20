@@ -319,15 +319,52 @@ function offlineCoachReply(target, utterance, intent, responseTurn) {
       memoryHook: `Use “${item.focus}” in your next sentence.`,
     };
   }
+  const offlineRules = {
+    Spanish: [
+      [/\bYo va\b/gi, "Yo voy", "Use “voy” with yo; “va” belongs with él, ella, or usted."],
+      [/\bYo es\b/gi, "Yo soy", "Use “soy” with yo; “es” belongs with él, ella, or usted."],
+      [/\btengo terminar\b/gi, "tengo que terminar", "Use “tener que + infinitive” to say you have to do something."],
+    ],
+    French: [
+      [/\bje suis besoin de\b/gi, "j’ai besoin de", "French says “j’ai besoin de”—literally, “I have need of.”"],
+    ],
+    Japanese: [
+      [/終わる必要です/g, "終える必要があります", "Use 終える for actively finishing something and 必要があります for “need to.”"],
+    ],
+    Korean: [
+      [/끝내 필요해요/g, "끝내야 해요", "Use -아/어야 해요 after the verb stem to express “have to.”"],
+    ],
+    German: [
+      [/\bich muss zu ([a-zäöüß]+en)\b/gi, "ich muss $1", "After a modal verb such as muss, use the infinitive without zu."],
+    ],
+    Italian: [
+      [/\bio va\b/gi, "io vado", "Use “vado” with io; “va” belongs with lui, lei, or Lei."],
+    ],
+    Mandarin: [
+      [/我需要完成了/g, "我需要完成", "After 需要, use the verb directly; 了 is not needed in this unfinished goal."],
+    ],
+    English: [
+      [/\bI need finish\b/gi, "I need to finish", "Use “need to + verb” for an action you must do."],
+    ],
+  };
+  let naturalVersion = utterance.trim();
+  let grammarCorrection =
+    "Your meaning landed. Reuse the highlighted phrase while answering the next question.";
+  for (const [pattern, replacement, explanation] of offlineRules[target] || []) {
+    if (pattern.test(naturalVersion)) {
+      naturalVersion = naturalVersion.replace(pattern, replacement);
+      grammarCorrection = explanation;
+      break;
+    }
+  }
   return {
     reply: item.reply,
     replyTranslation: item.translation,
     praise: utterance.trim()
       ? "Your message was understood, and you kept the conversation moving."
       : "You stayed in the conversation.",
-    grammarCorrection:
-      "Compare your sentence with the natural version, then answer the next question in your own words.",
-    naturalVersion: utterance.trim(),
+    grammarCorrection,
+    naturalVersion,
     pronunciation: item.pronunciation,
     vocabulary: item.words,
     memoryHook: `Reuse “${item.focus}” when you answer the next question.`,
