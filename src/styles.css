@@ -1085,7 +1085,7 @@ nav {
   color: var(--muted);
 }
 .calllive section {
-  width: min(640px, 100%);
+  width: min(820px, 100%);
   padding: 60px 24px;
 }
 .calllive h1 {
@@ -1138,6 +1138,241 @@ nav {
   font-family: "Instrument Serif";
   font-size: 21px;
 }
+.conversationcall {
+  padding-top: 42px !important;
+  padding-bottom: 80px !important;
+}
+.callthread {
+  max-height: 390px;
+  overflow-y: auto;
+  margin: 28px 0 18px;
+  padding: 20px;
+  border: 1px solid #18231d18;
+  border-radius: 18px;
+  background: #f2eee5;
+  scroll-behavior: smooth;
+}
+.bubblemsg {
+  width: min(86%, 580px);
+  margin: 0 0 14px;
+  padding: 15px 17px;
+  border-radius: 16px 16px 16px 4px;
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 5px 18px #18231d0b;
+}
+.bubblemsg.learner {
+  margin-left: auto;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--green);
+  color: #fff;
+}
+.bubblemsg > b {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--coral);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.bubblemsg.learner > b {
+  color: #f3aa95;
+}
+.bubblemsg p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.bubblemsg small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.replayline,
+.coachgrid article button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  margin-top: 8px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 11px;
+  cursor: pointer;
+}
+.replayline svg,
+.coachgrid article button svg {
+  width: 15px;
+}
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.thinking svg {
+  width: 18px;
+  color: var(--coral);
+}
+.feedbackdeck {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #294f3c22;
+  border-radius: 18px;
+  background: #fff;
+  text-align: left;
+}
+.feedbacksummary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.feedbacksummary > svg {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+}
+.feedbacksummary b,
+.coachgrid article > span {
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.feedbacksummary p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.coachgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.coachgrid article {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--cream);
+}
+.coachgrid article p {
+  margin: 7px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.coachgrid article small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.wordcard > div {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid #18231d12;
+}
+.wordcard > div b,
+.wordcard > div small {
+  display: inline;
+}
+.wordcard > div small::before {
+  content: " · ";
+}
+.retryphrase {
+  min-height: 44px;
+  margin-top: 12px;
+  color: var(--green);
+}
+.helpactions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+}
+.helpactions button {
+  min-height: 48px;
+  padding: 9px 10px;
+  border: 1px solid #294f3c35;
+  border-radius: 10px;
+  background: var(--sage);
+  color: var(--green);
+  font-size: 11px;
+  cursor: pointer;
+}
+.helpactions button svg {
+  display: block;
+  width: 17px;
+  margin: 0 auto 4px;
+}
+.helpactions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.callcomposer {
+  display: grid;
+  grid-template-columns: 64px 1fr 52px;
+  align-items: stretch;
+  gap: 9px;
+  margin-top: 14px;
+}
+.callcomposer .compactmic {
+  width: 64px;
+  height: auto;
+  min-height: 72px;
+  margin: 0;
+  border-radius: 12px;
+  box-shadow: none;
+}
+.callcomposer .compactmic svg {
+  width: 22px;
+}
+.callcomposer textarea {
+  min-height: 72px;
+  margin: 0;
+  padding: 12px;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-appearance: none;
+}
+.sendanswer {
+  min-height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--green);
+  color: #fff;
+  cursor: pointer;
+}
+.sendanswer:disabled {
+  opacity: 0.5;
+}
+.callprogress {
+  margin: 18px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.callprogress i {
+  display: block;
+  height: 5px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #18231d12;
+}
+.callprogress u {
+  display: block;
+  height: 100%;
+  background: var(--coral);
+  transition: width 0.3s ease;
+}
 @keyframes ringing {
   50% {
     transform: scale(1.08);
@@ -1181,5 +1416,37 @@ nav {
   }
   .calllive h1 {
     font-size: 43px;
+  }
+  .conversationcall {
+    padding: 30px 14px 70px !important;
+  }
+  .callthread {
+    max-height: 340px;
+    padding: 12px;
+  }
+  .bubblemsg {
+    width: 94%;
+  }
+  .coachgrid {
+    grid-template-columns: 1fr;
+  }
+  .helpactions {
+    grid-template-columns: 1fr;
+  }
+  .helpactions button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .helpactions button svg {
+    display: inline;
+    margin: 0;
+  }
+  .callcomposer {
+    grid-template-columns: 56px 1fr 48px;
+  }
+  .callcomposer .compactmic {
+    width: 56px;
   }
 }
