@@ -6,7 +6,9 @@ An award-focused prototype of a second-language agent for busy adults. Luma turn
 
 Luma now also includes **Proactive Coach Calls**: an opt-in phone-like daily practice flow that rings first, keeps the task due until the learner responds, retries missed calls inside a user-defined window, and requires a spoken or typed real-life sentence before the call can be completed.
 
-**Live demo:** https://luma-language-agent.taotao918918918.chatgpt.site
+**Primary judge demo:** https://cuihaitao202.github.io/luma-language-agent/
+
+**Alternate deployment:** https://luma-language-agent.taotao918918918.chatgpt.site
 
 **Public demo video:** https://youtu.be/ocISbvKnddQ
 
@@ -74,10 +76,10 @@ Key human product decisions were to organize around the learner's next real act,
 
 ## Judge test path
 
-1. Open the live demo and select a target language, real-life goal, and daily rhythm.
+1. Open the primary judge demo. Spanish is preselected for an English-speaking judge; any target language can be chosen.
 2. Start **Coffee before the meeting**.
 3. Listen once and select the communicative intent.
-4. Speak an order, or use **Type instead** when microphone access is unavailable.
+4. Tap **Speak in Spanish**. If the browser blocks speech recognition, type into the always-visible answer box or choose **Use the sample answer**.
 5. Inspect the single GPT-5.6-powered refinement and complete the memory loop.
 6. Open **Your living memory** to see the phrase transfer from coffee to a meeting.
 7. Open **Turn on daily calls**, run **Test a call now**, answer, and submit a real sentence to verify proactive accountability.
