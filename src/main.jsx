@@ -4,9 +4,11 @@ import {
   ArrowRight,
   AudioLines,
   Bell,
+  BookOpen,
   CalendarPlus,
   Check,
   ChevronLeft,
+  CircleHelp,
   Clock3,
   Flame,
   Globe2,
@@ -14,6 +16,8 @@ import {
   Phone,
   PhoneCall,
   Play,
+  Repeat2,
+  Send,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -64,35 +68,127 @@ const coachPrompts = {
   English: {
     lang: "en-US",
     text: "Good morning. I am calling because your day is starting. Tell me one thing you need to achieve today.",
+    translation:
+      "Good morning. Your day is starting—tell me one thing you need to achieve today.",
+    sample: "Today I need to finish my presentation before lunch.",
   },
   Spanish: {
     lang: "es-ES",
     text: "Buenos días. Te llamo porque empieza tu día. Dime una cosa que necesitas lograr hoy.",
+    translation:
+      "Good morning. I’m calling because your day is starting. Tell me one thing you need to achieve today.",
+    sample: "Hoy necesito terminar mi presentación antes del almuerzo.",
   },
   French: {
     lang: "fr-FR",
     text: "Bonjour. Je t’appelle parce que ta journée commence. Dis-moi une chose que tu dois accomplir aujourd’hui.",
+    translation:
+      "Good morning. I’m calling because your day is starting. Tell me one thing you need to accomplish today.",
+    sample: "Aujourd’hui, je dois terminer ma présentation avant le déjeuner.",
   },
   Japanese: {
     lang: "ja-JP",
     text: "おはようございます。今日、必ず達成したいことを一つ教えてください。",
+    translation:
+      "Good morning. Tell me one thing you definitely want to accomplish today.",
+    sample: "今日は昼までにプレゼンを完成させたいです。",
   },
   Korean: {
     lang: "ko-KR",
     text: "좋은 아침이에요. 오늘 꼭 이루고 싶은 한 가지를 말해 주세요.",
+    translation:
+      "Good morning. Tell me one thing you really want to accomplish today.",
+    sample: "오늘 점심 전에 발표 자료를 끝내야 해요.",
   },
   German: {
     lang: "de-DE",
     text: "Guten Morgen. Dein Tag beginnt. Sag mir eine Sache, die du heute erreichen musst.",
+    translation:
+      "Good morning. Your day is starting. Tell me one thing you must achieve today.",
+    sample: "Heute muss ich meine Präsentation vor dem Mittagessen fertigstellen.",
   },
   Italian: {
     lang: "it-IT",
     text: "Buongiorno. La tua giornata sta iniziando. Dimmi una cosa che devi realizzare oggi.",
+    translation:
+      "Good morning. Your day is starting. Tell me one thing you need to accomplish today.",
+    sample: "Oggi devo finire la mia presentazione prima di pranzo.",
   },
   Mandarin: {
     lang: "zh-CN",
     text: "早上好。你今天必须完成的一件事是什么？请用一句话告诉我。",
+    translation:
+      "Good morning. What is one thing you must finish today? Tell me in one sentence.",
+    sample: "今天中午以前，我必须完成演示文稿。",
   },
+};
+
+const offlineCallTurns = {
+  Spanish: [
+    {
+      reply: "Muy bien. ¿Por qué es importante terminarla hoy?",
+      translation: "Very good. Why is it important to finish it today?",
+      focus: "necesito terminar",
+      pronunciation: "Link ‘necesito terminar’ smoothly: ne-ce-SI-to ter-mi-NAR.",
+      words: [
+        { term: "terminar", meaning: "to finish", example: "Necesito terminarlo hoy." },
+        { term: "antes de", meaning: "before", example: "antes del almuerzo" },
+      ],
+    },
+    {
+      reply: "Entiendo. ¿Cuál será el primer paso después de esta llamada?",
+      translation: "I understand. What will your first step be after this call?",
+      focus: "el primer paso",
+      pronunciation: "Keep ‘primer paso’ light and connected: pri-MER PA-so.",
+      words: [
+        { term: "el primer paso", meaning: "the first step", example: "Mi primer paso es abrir el documento." },
+      ],
+    },
+    {
+      reply: "Perfecto. Dímelo como una promesa: ‘Después de esta llamada, voy a…’",
+      translation: "Perfect. Tell me as a promise: ‘After this call, I’m going to…’",
+      focus: "Después de esta llamada, voy a…",
+      pronunciation: "Stress the action after ‘voy a’; let ‘voy a’ flow as one unit.",
+      words: [
+        { term: "voy a", meaning: "I’m going to", example: "Voy a empezar ahora." },
+      ],
+    },
+  ],
+  French: [
+    { reply: "Très bien. Pourquoi est-ce important de le terminer aujourd’hui ?", translation: "Very good. Why is it important to finish it today?", focus: "je dois terminer", pronunciation: "Join ‘je dois’ smoothly; do not stress each word.", words: [{ term: "terminer", meaning: "to finish", example: "Je dois le terminer aujourd’hui." }] },
+    { reply: "Je comprends. Quelle sera ta première étape après cet appel ?", translation: "I understand. What will your first step be after this call?", focus: "la première étape", pronunciation: "Keep the final consonants soft in ‘première étape’.", words: [{ term: "une étape", meaning: "a step", example: "La première étape est simple." }] },
+    { reply: "Parfait. Fais-en une promesse : ‘Après cet appel, je vais…’", translation: "Perfect. Make it a promise: ‘After this call, I’m going to…’", focus: "je vais", pronunciation: "Say ‘je vais’ as one compact phrase.", words: [{ term: "je vais", meaning: "I’m going to", example: "Je vais commencer maintenant." }] },
+  ],
+  Japanese: [
+    { reply: "いいですね。なぜ今日中に終えることが大切ですか？", translation: "Good. Why is it important to finish it today?", focus: "今日中に終える", pronunciation: "Keep きょうじゅうに together: kyō-jū-ni.", words: [{ term: "今日中に", meaning: "by the end of today", example: "今日中に終えます。" }] },
+    { reply: "分かりました。この電話の後、最初に何をしますか？", translation: "I understand. What will you do first after this call?", focus: "最初に", pronunciation: "Say さいしょに in three even beats.", words: [{ term: "最初に", meaning: "first", example: "最初に資料を開きます。" }] },
+    { reply: "いいですね。約束として言ってみましょう。「この電話の後、すぐに…」", translation: "Good. Say it as a promise: ‘Right after this call, I will…’", focus: "この電話の後", pronunciation: "Pause lightly after あと before the action.", words: [{ term: "すぐに", meaning: "right away", example: "すぐに始めます。" }] },
+  ],
+  Korean: [
+    { reply: "좋아요. 오늘 끝내는 것이 왜 중요해요?", translation: "Good. Why is finishing it today important?", focus: "오늘 끝내야 해요", pronunciation: "Connect 끝내야 해요 smoothly without pausing.", words: [{ term: "끝내다", meaning: "to finish", example: "오늘 끝내야 해요." }] },
+    { reply: "알겠어요. 이 통화 후에 가장 먼저 무엇을 할 거예요?", translation: "I understand. What will you do first after this call?", focus: "가장 먼저", pronunciation: "Keep 가장 먼저 as one rhythm group.", words: [{ term: "가장 먼저", meaning: "first of all", example: "가장 먼저 문서를 열 거예요." }] },
+    { reply: "좋아요. 약속처럼 말해 보세요. ‘이 통화 후에 바로…’", translation: "Good. Say it like a promise: ‘Right after this call…’", focus: "바로", pronunciation: "Stress the first syllable: BA-ro.", words: [{ term: "바로", meaning: "right away", example: "바로 시작할 거예요." }] },
+  ],
+  German: [
+    { reply: "Sehr gut. Warum ist es wichtig, das heute fertigzustellen?", translation: "Very good. Why is it important to finish that today?", focus: "ich muss … fertigstellen", pronunciation: "Keep ‘fertigstellen’ together; stress FER-tig.", words: [{ term: "fertigstellen", meaning: "to complete", example: "Ich muss es heute fertigstellen." }] },
+    { reply: "Verstanden. Was ist dein erster Schritt nach diesem Anruf?", translation: "Understood. What is your first step after this call?", focus: "der erste Schritt", pronunciation: "Keep the ‘sch’ sound clear in Schritt.", words: [{ term: "der Schritt", meaning: "the step", example: "Der erste Schritt ist einfach." }] },
+    { reply: "Perfekt. Sag es als Versprechen: ‘Nach diesem Anruf werde ich…’", translation: "Perfect. Say it as a promise: ‘After this call, I will…’", focus: "werde ich", pronunciation: "Link ‘werde ich’ naturally; the words should not sound isolated.", words: [{ term: "werde ich", meaning: "I will", example: "Dann werde ich anfangen." }] },
+  ],
+  Italian: [
+    { reply: "Molto bene. Perché è importante finirla oggi?", translation: "Very good. Why is it important to finish it today?", focus: "devo finire", pronunciation: "Let ‘devo finire’ flow; stress ni in finire.", words: [{ term: "finire", meaning: "to finish", example: "Devo finirla oggi." }] },
+    { reply: "Capisco. Qual è il primo passo dopo questa chiamata?", translation: "I understand. What is the first step after this call?", focus: "il primo passo", pronunciation: "Hold the double s slightly in passo.", words: [{ term: "il passo", meaning: "the step", example: "Il primo passo è semplice." }] },
+    { reply: "Perfetto. Dillo come una promessa: ‘Dopo questa chiamata, inizierò a…’", translation: "Perfect. Say it as a promise: ‘After this call, I will start to…’", focus: "inizierò", pronunciation: "Stress the final syllable: ini-zie-RÒ.", words: [{ term: "inizierò", meaning: "I will start", example: "Inizierò subito." }] },
+  ],
+  Mandarin: [
+    { reply: "很好。为什么今天完成这件事很重要？", translation: "Very good. Why is it important to finish this today?", focus: "必须完成", pronunciation: "Keep the tones clear: bì-xū wán-chéng.", words: [{ term: "完成", meaning: "to complete", example: "我今天必须完成。" }] },
+    { reply: "明白了。这通电话以后，你第一步要做什么？", translation: "I understand. After this call, what will your first step be?", focus: "第一步", pronunciation: "Say dì-yī-bù with three clear tones.", words: [{ term: "第一步", meaning: "the first step", example: "第一步是打开文件。" }] },
+    { reply: "很好。像承诺一样说：‘这通电话以后，我马上…’", translation: "Good. Say it like a promise: ‘After this call, I will immediately…’", focus: "我马上", pronunciation: "Keep mǎ-shàng compact; do not insert a pause.", words: [{ term: "马上", meaning: "right away", example: "我马上开始。" }] },
+  ],
+  English: [
+    { reply: "Good. Why is finishing it today important to you?", translation: "Why does this goal matter today?", focus: "I need to finish", pronunciation: "Link ‘need to’ naturally; it often sounds like ‘need-tuh’.", words: [{ term: "finish", meaning: "complete something", example: "I need to finish it today." }] },
+    { reply: "I understand. What is the first step you will take after this call?", translation: "What action will you take first?", focus: "the first step", pronunciation: "Keep the final st in first before step.", words: [{ term: "first step", meaning: "the earliest action", example: "My first step is opening the document." }] },
+    { reply: "Perfect. Say it as a promise: ‘Right after this call, I’m going to…’", translation: "Commit to one immediate action.", focus: "I’m going to", pronunciation: "In natural speech, ‘going to’ can reduce, but keep it clear.", words: [{ term: "right after", meaning: "immediately following", example: "Right after this call, I’ll begin." }] },
+  ],
 };
 const practiceContent = {
   Spanish: {
@@ -189,8 +285,54 @@ const readJson = (key, fallback) => {
 const localDay = () => new Date().toLocaleDateString("en-CA");
 const publicCallUrl = () =>
   `${location.origin}${location.pathname}?coachCall=1`;
+const hostedCoachOrigin =
+  "https://luma-language-agent.taotao918918918.chatgpt.site";
 const coachApiUrl = () =>
-  new URL(`${import.meta.env.BASE_URL}api/coach`, location.origin).href;
+  location.hostname.endsWith("github.io")
+    ? `${hostedCoachOrigin}/api/coach`
+    : new URL(`${import.meta.env.BASE_URL}api/coach`, location.origin).href;
+
+function offlineCoachReply(target, utterance, intent, responseTurn) {
+  const turns = offlineCallTurns[target] || offlineCallTurns.Spanish;
+  const item = turns[Math.min(responseTurn, turns.length - 1)];
+  if (intent === "clarify") {
+    return {
+      reply: item.reply,
+      replyTranslation: item.translation,
+      praise: "Asking for clarification is real communication—not a failure.",
+      grammarCorrection: "No correction needed. You used a repair strategy.",
+      naturalVersion: item.reply,
+      pronunciation: item.pronunciation,
+      vocabulary: item.words,
+      memoryHook: `Keep the useful frame “${item.focus}”.`,
+    };
+  }
+  if (intent === "vocabulary") {
+    return {
+      reply: item.reply,
+      replyTranslation: item.translation,
+      praise: "You paused to make meaning clear before continuing.",
+      grammarCorrection: "Now reuse one of the new words in your next answer.",
+      naturalVersion: item.focus,
+      pronunciation: item.pronunciation,
+      vocabulary: item.words,
+      memoryHook: `Use “${item.focus}” in your next sentence.`,
+    };
+  }
+  return {
+    reply: item.reply,
+    replyTranslation: item.translation,
+    praise: utterance.trim()
+      ? "Your message was understood, and you kept the conversation moving."
+      : "You stayed in the conversation.",
+    grammarCorrection:
+      "Compare your sentence with the natural version, then answer the next question in your own words.",
+    naturalVersion: utterance.trim(),
+    pronunciation: item.pronunciation,
+    vocabulary: item.words,
+    memoryHook: `Reuse “${item.focus}” when you answer the next question.`,
+  };
+}
 
 async function registerLumaWorker() {
   if (!("serviceWorker" in navigator)) return null;
@@ -834,21 +976,41 @@ function CoachCall({ profile, settings, complete, miss }) {
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(false);
   const [callNotice, setCallNotice] = useState("");
+  const [recognitionConfidence, setRecognitionConfidence] = useState(null);
+  const [learnerTurns, setLearnerTurns] = useState(0);
   const prompt = coachPrompts[profile?.target] || coachPrompts.English;
-  const copy = practiceContent[profile?.target] || practiceContent.Spanish;
+  const [messages, setMessages] = useState(() => [
+    {
+      role: "coach",
+      text: prompt.text,
+      translation: prompt.translation,
+    },
+  ]);
+  const answerRef = useRef(null);
+  const threadRef = useRef(null);
   useEffect(() => {
     navigator.vibrate?.([300, 180, 300, 180, 600]);
     const t = setInterval(() => navigator.vibrate?.([300, 180, 300]), 2200);
     return () => clearInterval(t);
   }, []);
+  useEffect(() => {
+    threadRef.current?.scrollTo({
+      top: threadRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages, feedback]);
+  const speakCoach = (text, rate = 0.82) => {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = prompt.lang;
+    u.rate = rate;
+    speechSynthesis.speak(u);
+  };
   const answer = () => {
     setAnswered(true);
     navigator.vibrate?.(0);
     navigator.wakeLock?.request?.("screen").catch(() => {});
-    const u = new SpeechSynthesisUtterance(prompt.text);
-    u.lang = prompt.lang;
-    u.rate = 0.88;
-    speechSynthesis.speak(u);
+    speakCoach(prompt.text);
   };
   const listen = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -873,8 +1035,14 @@ function CoachCall({ profile, settings, complete, miss }) {
         );
       };
       r.onresult = (e) => {
-        setSpoken(e.results[0][0].transcript);
-        setCallNotice("Got it — review your transcript, then send.");
+        const result = e.results[0][0];
+        setSpoken(result.transcript);
+        setRecognitionConfidence(
+          Number.isFinite(result.confidence) ? result.confidence : null,
+        );
+        setCallNotice(
+          "I captured your words. Check the transcript, then send it for coaching.",
+        );
       };
       r.start();
     } catch {
@@ -884,35 +1052,73 @@ function CoachCall({ profile, settings, complete, miss }) {
       );
     }
   };
-  const respond = async () => {
-    if (!spoken.trim()) {
+  const respond = async (intent = "respond") => {
+    const isAnswer = intent === "respond";
+    if (isAnswer && !spoken.trim()) {
       setCallNotice(
-        `Say or type one sentence in ${profile?.target || "Spanish"} first.`,
+        `Say or type your answer in ${profile?.target || "Spanish"} first. You can also ask for help below.`,
       );
+      answerRef.current?.focus();
       return;
     }
+    const helpLabels = {
+      clarify: "I didn’t understand. Please explain and ask me again.",
+      vocabulary: "Explain the important words in your last sentence.",
+    };
+    const learnerText = isAnswer ? spoken.trim() : helpLabels[intent];
+    const nextHistory = [
+      ...messages,
+      { role: "learner", text: learnerText, intent },
+    ];
     setLoading(true);
+    setCallNotice("");
     try {
       const r = await fetch(coachApiUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           targetLanguage: profile?.target || "Spanish",
+          nativeLanguage: profile?.nativeLanguage || "English",
           scenario: "a proactive morning accountability call before work",
-          utterance: spoken,
+          utterance: learnerText,
+          intent,
+          recognitionConfidence,
+          turn: learnerTurns,
+          history: nextHistory.slice(-8),
         }),
       });
       if (!r.ok) throw new Error();
-      setFeedback(await r.json());
+      const result = await r.json();
+      setFeedback(result);
+      setMessages([
+        ...nextHistory,
+        {
+          role: "coach",
+          text: result.reply,
+          translation: result.replyTranslation,
+        },
+      ]);
+      speakCoach(result.reply);
     } catch {
-      setFeedback({
-        praise: "Your meaning landed clearly.",
-        refinement: copy.refinement,
-        naturalVersion: spoken,
-        memoryHook:
-          "Luma will reuse this frame tomorrow with a different real goal.",
-      });
+      const result = offlineCoachReply(
+        profile?.target || "Spanish",
+        learnerText,
+        intent,
+        learnerTurns,
+      );
+      setFeedback(result);
+      setMessages([
+        ...nextHistory,
+        {
+          role: "coach",
+          text: result.reply,
+          translation: result.replyTranslation,
+        },
+      ]);
+      speakCoach(result.reply);
     } finally {
+      if (isAnswer) setLearnerTurns((count) => count + 1);
+      setSpoken("");
       setLoading(false);
     }
   };
@@ -943,67 +1149,180 @@ function CoachCall({ profile, settings, complete, miss }) {
       <div className="livehead">
         <span className="pulse"></span>
         <b>Luma · live coach</b>
-        <span>01:12</span>
+        <span>{learnerTurns}/3 replies</span>
       </div>
-      <section>
-        <span className="kicker">YOU ANSWERED · NOW RESPOND</span>
+      <section className="conversationcall">
+        <span className="kicker">LIVE · INTERACTIVE · ADAPTIVE</span>
         <h1>
-          What must you achieve <em>today?</em>
+          Have a real <em>conversation.</em>
         </h1>
         <p>
-          Answer with one real sentence in {profile?.target || "Spanish"}. This
-          call is complete only after you respond.
+          Answer, ask questions, and try again. Luma explains what you miss and
+          coaches every reply in {profile?.target || "Spanish"}.
         </p>
-        {!feedback ? (
-          <>
-            <button
-              type="button"
-              className={"mic " + (listening ? "active" : "")}
-              onClick={listen}
-            >
-              <Mic />
-              <span>{listening ? "Listening…" : "Speak now"}</span>
-            </button>
-            {callNotice && (
-              <p className="speechnotice" role="status">
-                {callNotice}
-              </p>
+        <div className="callthread" ref={threadRef} aria-live="polite">
+          {messages.map((message, index) => (
+            <article className={`bubblemsg ${message.role}`} key={index}>
+              <b>{message.role === "coach" ? "Luma" : "You"}</b>
+              <p>{message.text}</p>
+              {message.translation && message.role === "coach" && (
+                <small>{message.translation}</small>
+              )}
+              {message.role === "coach" && (
+                <button
+                  type="button"
+                  className="replayline"
+                  onClick={() => speakCoach(message.text, 0.75)}
+                >
+                  <Volume2 /> Hear slowly
+                </button>
+              )}
+            </article>
+          ))}
+          {loading && (
+            <article className="bubblemsg coach thinking">
+              <AudioLines /> Luma is listening deeply…
+            </article>
+          )}
+        </div>
+        {feedback && (
+          <div className="feedbackdeck">
+            <div className="feedbacksummary">
+              <Check />
+              <div>
+                <b>Meaning</b>
+                <p>{feedback.praise}</p>
+              </div>
+            </div>
+            <div className="coachgrid">
+              {(feedback.grammarCorrection || feedback.refinement) && (
+                <article>
+                  <span>GRAMMAR & CLARITY</span>
+                  <p>{feedback.grammarCorrection || feedback.refinement}</p>
+                </article>
+              )}
+              {feedback.naturalVersion && (
+                <article>
+                  <span>A MORE NATURAL WAY</span>
+                  <p>“{feedback.naturalVersion}”</p>
+                  <button
+                    type="button"
+                    onClick={() => speakCoach(feedback.naturalVersion, 0.72)}
+                  >
+                    <Volume2 /> Hear it
+                  </button>
+                </article>
+              )}
+              {feedback.pronunciation && (
+                <article>
+                  <span>PRONUNCIATION FOCUS</span>
+                  <p>{feedback.pronunciation}</p>
+                  {recognitionConfidence !== null && (
+                    <small>
+                      Speech recognition confidence: {Math.round(recognitionConfidence * 100)}%
+                    </small>
+                  )}
+                </article>
+              )}
+              {(feedback.vocabulary || []).length > 0 && (
+                <article className="wordcard">
+                  <span>WORDS IN CONTEXT</span>
+                  {(feedback.vocabulary || []).slice(0, 2).map((word, index) => (
+                    <div key={`${word.term}-${index}`}>
+                      <b>{word.term}</b>
+                      <small>{word.meaning}</small>
+                      <p>{word.example}</p>
+                    </div>
+                  ))}
+                </article>
+              )}
+            </div>
+            {feedback.naturalVersion && (
+              <button
+                type="button"
+                className="secondary retryphrase"
+                onClick={() => {
+                  setSpoken(feedback.naturalVersion);
+                  requestAnimationFrame(() => answerRef.current?.focus());
+                }}
+              >
+                <Repeat2 /> Try the corrected sentence
+              </button>
             )}
-            <textarea
-              value={spoken}
-              onChange={(e) => {
-                setSpoken(e.target.value);
-                setCallNotice("");
-              }}
-              placeholder={`Type your ${profile?.target || "Spanish"} answer…`}
-            />
-            <button
-              type="button"
-              className="type sample callsample"
-              onClick={() => setSpoken(copy.prompt)}
-            >
-              Use a sample answer
-            </button>
-            <button
-              type="button"
-              className="primary full"
-              disabled={loading}
-              onClick={respond}
-            >
-              {loading ? "Luma is listening…" : "Send my response"}{" "}
-              {!loading && <ArrowRight />}
-            </button>
-          </>
-        ) : (
-          <div className="callresult">
-            <Check />
-            <h2>{feedback.praise}</h2>
-            <p>{feedback.refinement}</p>
-            <blockquote>“{feedback.naturalVersion}”</blockquote>
-            <button type="button" className="primary full" onClick={complete}>
-              I said it — complete today’s call <Check />
-            </button>
           </div>
+        )}
+        <div className="helpactions">
+          <button type="button" disabled={loading} onClick={() => respond("clarify")}>
+            <CircleHelp /> I didn’t understand
+          </button>
+          <button type="button" disabled={loading} onClick={() => respond("vocabulary")}>
+            <BookOpen /> Explain the words
+          </button>
+          <button
+            type="button"
+            onClick={() => speakCoach(messages.at(-1)?.text || prompt.text, 0.62)}
+          >
+            <Volume2 /> Say it more slowly
+          </button>
+        </div>
+        {callNotice && (
+          <p className="speechnotice" role="status">
+            {callNotice}
+          </p>
+        )}
+        <div className="callcomposer">
+          <button
+            type="button"
+            className={"mic compactmic " + (listening ? "active" : "")}
+            onClick={listen}
+            aria-label={`Speak in ${profile?.target || "Spanish"}`}
+          >
+            <Mic />
+            <span>{listening ? "Listening…" : "Speak"}</span>
+          </button>
+          <textarea
+            ref={answerRef}
+            value={spoken}
+            onChange={(e) => {
+              setSpoken(e.target.value);
+              setRecognitionConfidence(null);
+              setCallNotice("");
+            }}
+            placeholder={`Answer or ask in ${profile?.target || "Spanish"}…`}
+          />
+          <button
+            type="button"
+            className="sendanswer"
+            disabled={loading}
+            onClick={() => respond("respond")}
+            aria-label="Send my answer"
+          >
+            <Send />
+          </button>
+        </div>
+        <button
+          type="button"
+          className="type sample callsample"
+          onClick={() => {
+            setSpoken(prompt.sample);
+            setRecognitionConfidence(null);
+            requestAnimationFrame(() => answerRef.current?.focus());
+          }}
+        >
+          Use a sample answer
+        </button>
+        <div className="callprogress">
+          <span>
+            {learnerTurns < 3
+              ? `${3 - learnerTurns} more real ${3 - learnerTurns === 1 ? "reply" : "replies"} to complete today’s call`
+              : "Conversation complete—your coach has enough evidence for today."}
+          </span>
+          <i><u style={{ width: `${Math.min(100, (learnerTurns / 3) * 100)}%` }} /></i>
+        </div>
+        {learnerTurns >= 3 && (
+          <button type="button" className="primary full" onClick={complete}>
+            Complete today’s conversation <Check />
+          </button>
         )}
       </section>
     </div>
@@ -1369,4 +1688,7 @@ function Memory({ profile, back, start }) {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+const rootElement = document.getElementById("root");
+const root = rootElement.__lumaRoot || createRoot(rootElement);
+rootElement.__lumaRoot = root;
+root.render(<App />);

@@ -4,7 +4,7 @@
 
 An award-focused prototype of a second-language agent for busy adults. Luma turns an imminent real-world moment into a 3-minute listen → speak → refine → reappear loop. It avoids vocabulary lists, protects confidence, corrects one high-value issue at a time, and schedules language to reappear in a different context before it is forgotten.
 
-Luma now also includes **Proactive Coach Calls**: an opt-in phone-like daily practice flow that rings first, keeps the task due until the learner responds, retries missed calls inside a user-defined window, and requires a spoken or typed real-life sentence before the call can be completed.
+Luma now also includes **Proactive Coach Conversations**: an opt-in phone-like daily practice flow that rings first, keeps the task due until the learner responds, retries missed calls inside a user-defined window, and requires at least three meaningful learner replies before the call can be completed. Each turn adapts to the learner’s meaning and returns focused grammar, natural phrasing, transcript-based pronunciation guidance, vocabulary in context, and a new follow-up question.
 
 **Primary judge demo:** https://cuihaitao202.github.io/luma-language-agent/
 
@@ -51,18 +51,18 @@ The MVP proves four differentiators:
 2. Choose the daily time, retry interval, and retry limit.
 3. Allow browser notifications and add the generated recurring event to the phone calendar.
 4. Install Luma to the phone home screen for an app-like call experience.
-5. When Luma calls, answer and speak or type one real sentence. The task is not marked complete until a response is submitted.
+5. When Luma calls, answer and continue a real three-turn conversation. Ask **I didn’t understand**, request word explanations, replay the coach slowly, or retry a corrected sentence at any time. The task is not marked complete until three learner replies are submitted.
 
-The recurring calendar call is the reliable closed-browser transport in this MVP. The service worker, installable manifest, notification-click route, call screen, retry state, wake lock, vibration, browser speech recognition, and GPT-5.6 coaching feedback are implemented. A production deployment can add standards-based Web Push or a SIP/telephony provider without changing the learner flow. Luma never disables operating-system emergency controls and includes an explicit pause option.
+The recurring calendar call is the reliable closed-browser transport in this MVP. The service worker, installable manifest, notification-click route, call screen, retry state, wake lock, vibration, browser speech recognition, and GPT-5.6 multi-turn coaching are implemented. Speech recognition supplies a transcript and confidence value; Luma gives honest transcript-based pronunciation guidance and does not claim acoustic phoneme scoring. A production deployment can add streaming audio analysis, standards-based Web Push, or a SIP/telephony provider without changing the learner flow. Luma never disables operating-system emergency controls and includes an explicit pause option.
 
 ## OpenAI architecture
 
 - GPT-5.6 Terra via the Responses API is the live reasoning layer for personalized, structured coaching feedback.
 - GPT-Realtime for the production speech-to-speech coach (the prototype uses browser speech so it is judge-ready without setup).
-- Structured output for stable feedback objects.
+- Structured output for stable multi-turn objects: adaptive reply, translation, grammar correction, natural version, pronunciation focus, contextual vocabulary, and memory hook.
 - A learner memory store should keep capabilities and error patterns, not raw sensitive conversations by default.
 
-The server-side implementation is in `worker/index.js`; the API key never reaches the browser. If the live service is unavailable, the UI deliberately falls back to a deterministic judge-ready response so the full product loop remains testable.
+The server-side implementation is in `worker/index.js`; the API key never reaches the browser. The primary GitHub Pages demo calls the protected hosted coach endpoint and falls back to a language-specific three-turn conversation if the live service is unavailable, so the complete product loop remains testable.
 
 Sanitized runtime model verification is documented in [`MODEL_EVIDENCE.md`](MODEL_EVIDENCE.md). Successful live coaching responses also expose requested and provider-reported model identifiers in a non-sensitive `_meta` object.
 
@@ -82,7 +82,9 @@ Key human product decisions were to organize around the learner's next real act,
 4. Tap **Speak in Spanish**. If the browser blocks speech recognition, type into the always-visible answer box or choose **Use the sample answer**.
 5. Inspect the single GPT-5.6-powered refinement and complete the memory loop.
 6. Open **Your living memory** to see the phrase transfer from coffee to a meeting.
-7. Open **Turn on daily calls**, run **Test a call now**, answer, and submit a real sentence to verify proactive accountability.
+7. Open **Turn on daily calls**, run **Test a call now**, and answer the first question.
+8. Inspect the grammar, natural phrasing, pronunciation, and vocabulary cards. Tap **I didn’t understand** or **Explain the words** to test learner-controlled repair.
+9. Continue through three adaptive replies; the completion control appears only after the conversation has real interaction depth.
 
 No account or test data is required.
 
