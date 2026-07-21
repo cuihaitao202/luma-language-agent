@@ -127,3 +127,46 @@ export function learnerSnapshot(model) {
       "Treat these estimates as provisional. Elicit evidence through a meaningful task, adapt difficulty from success and hesitation, and test transfer rather than recognition.",
   };
 }
+
+export function saveContextualLookup(model, lookup, now = Date.now()) {
+  const next = structuredClone(model || createLearnerModel());
+  const term = String(lookup?.term || "").trim();
+  if (!term) return next;
+  const domain = String(lookup.domain || lookup.detectedDomain || "general");
+  const key = `lookup:${term.toLocaleLowerCase()}:${domain.toLocaleLowerCase()}`;
+  const existing = next.memories[key] || {
+    key,
+    intent: `understand and use “${term}” in ${domain}`,
+    phrase: lookup.naturalExample || term,
+    contexts: [],
+    stabilityHours: 8,
+    successfulRetrievals: 0,
+  };
+  existing.term = term;
+  existing.lookup = {
+    sourceText: String(lookup.sourceText || "").slice(0, 800),
+    detectedDomain: domain,
+    nativeExplanation: String(lookup.nativeExplanation || ""),
+    plainExplanation: String(lookup.plainExplanation || ""),
+    contextualMeaning: String(lookup.contextualMeaning || ""),
+    dictionaryContrast: String(lookup.dictionaryContrast || ""),
+    commonCollocations: Array.isArray(lookup.commonCollocations) ? lookup.commonCollocations.slice(0, 8) : [],
+    examples: Array.isArray(lookup.examples) ? lookup.examples.slice(0, 5) : [],
+    usageNote: String(lookup.usageNote || ""),
+  };
+  existing.lastSeenAt = now;
+  existing.nextDueAt = now + 8 * 36e5;
+  existing.stabilityHours = Math.max(8, existing.stabilityHours || 8);
+  existing.experiment = {
+    stage: "meaning-understood",
+    nextTest: "context-reconstruction",
+    variant: Object.keys(next.memories).length % 2 === 0 ? "example-first" : "contrast-first",
+  };
+  if (!existing.contexts.includes(domain)) existing.contexts = [...existing.contexts, domain].slice(-5);
+  next.memories[key] = existing;
+  next.recentSignals = [
+    { skill: "reading", score: 0.45, hesitation: 0.5, transfer: false, at: now, source: "contextual-lookup", memoryKey: key },
+    ...(next.recentSignals || []),
+  ].slice(0, 20);
+  return next;
+}

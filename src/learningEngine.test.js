@@ -6,6 +6,7 @@ import {
   nextBestAction,
   recordEvidence,
   retrievability,
+  saveContextualLookup,
 } from "./learningEngine.js";
 
 test("evidence updates only the observed capability", () => {
@@ -13,6 +14,20 @@ test("evidence updates only the observed capability", () => {
   const next = recordEvidence(model, { skill: "speaking", score: 0.9 });
   assert.ok(next.skills.speaking.estimate > model.skills.speaking.estimate);
   assert.equal(next.skills.listening.estimate, model.skills.listening.estimate);
+});
+
+test("a contextual lookup becomes a scheduled learning memory", () => {
+  const model = saveContextualLookup(createLearnerModel(), {
+    term: "verdict",
+    detectedDomain: "quantitative trading",
+    contextualMeaning: "the system's final decision or classification",
+    naturalExample: "The model returned a bullish verdict.",
+    commonCollocations: ["return a verdict", "bullish verdict"],
+  }, 1_000);
+  const memory = model.memories["lookup:verdict:quantitative trading"];
+  assert.equal(memory.term, "verdict");
+  assert.equal(memory.experiment.nextTest, "context-reconstruction");
+  assert.equal(memory.nextDueAt, 1_000 + 8 * 36e5);
 });
 
 test("successful transfer expands stability and records contexts", () => {
