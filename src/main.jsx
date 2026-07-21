@@ -26,6 +26,12 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import "./onboarding.css";
+import {
+  createLearnerModel,
+  learnerSnapshot,
+  nextBestAction,
+  recordEvidence,
+} from "./learningEngine.js";
 
 const scenes = [
   {
@@ -53,6 +59,67 @@ const scenes = [
     level: "A2 → B1",
   },
 ];
+const socialScenarios = [
+  { id: "coworker-lunch", icon: "🥪", title: "Coworker lunch", relationship: "new coworkers", locale: "United States", channel: "face-to-face", register: "casual-professional", pressure: "friendly small talk with fast topic changes" },
+  { id: "group-chat", icon: "💬", title: "Friends' group chat", relationship: "new friends", locale: "United States", channel: "group text", register: "informal-digital", pressure: "abbreviations, teasing, and implied context" },
+  { id: "house-party", icon: "🎉", title: "A friend's house party", relationship: "friends of friends", locale: "United States", channel: "face-to-face", register: "casual", pressure: "noise, interruptions, and joining a group" },
+  { id: "meetup", icon: "🧭", title: "Local community meetup", relationship: "strangers with a shared interest", locale: "United States", channel: "face-to-face", register: "warm-casual", pressure: "introductions and keeping a conversation alive" },
+  { id: "slack", icon: "⚡", title: "Team chat", relationship: "cross-functional coworkers", locale: "United States", channel: "work chat", register: "concise-digital", pressure: "acronyms, soft disagreement, and quick coordination" },
+  { id: "conference", icon: "🎙", title: "Conference reception", relationship: "professional peers", locale: "international academic conference", channel: "face-to-face", register: "social-academic", pressure: "entering conversations and explaining research naturally" },
+];
+const domainTracks = [
+  {
+    id: "life",
+    icon: "◎",
+    title: "Life & social fluency",
+    subtitle: "Errands, friendships, services, conflict, humor",
+    terms: ["read the room", "I’m down", "no worries"],
+    mission: "Join a conversation, clarify naturally, and keep it moving.",
+    relationship: "people encountered in everyday life",
+    locale: "learner-selected local community",
+    channel: "mixed spoken and digital",
+    register: "everyday adaptive",
+    pressure: "natural pace, implied meaning, interruptions, and social repair",
+  },
+  {
+    id: "ai-research",
+    icon: "◈",
+    title: "AI · world models & embodied intelligence",
+    subtitle: "Papers, technical talks, lab discussion, Q&A",
+    terms: ["latent dynamics", "VLA policy", "sim-to-real"],
+    knowledgeMap: [
+      "VLM: multimodal alignment · grounding · instruction tuning · evaluation",
+      "VLA: action tokenization · robot trajectories · policy pretraining · post-training",
+      "World models: latent dynamics · video prediction · rollout · planning · reward signals",
+      "Training stack: data mixture · embodiment diversity · sim-to-real · closed-loop evaluation",
+    ],
+    mission: "Explain a paper claim, qualify its evidence, and answer a skeptical question.",
+    relationship: "AI researchers and engineering peers",
+    locale: "international AI research community",
+    channel: "paper discussion and conference Q&A",
+    register: "technical-academic",
+    pressure: "dense terminology, compressed explanations, and critical follow-up questions",
+  },
+  {
+    id: "ar-waveguide",
+    icon: "◇",
+    title: "AR · optical waveguides & fabrication",
+    subtitle: "Array waveguides · PVG volume holography · slanted/gradient SRG",
+    terms: ["pupil replication", "Bragg condition", "slant angle", "diffraction-efficiency gradient"],
+    knowledgeMap: [
+      "Array: partial reflector array · pupil replication · coating split ratio · stray light",
+      "PVG: chiral dopant · helical pitch · Bragg selectivity · polarization conversion · 2D EPE",
+      "SRG: slant angle · duty cycle/fill factor · grating depth · sidewall taper · RCWA",
+      "Process: master · NIL replication · residual layer · pitch/CD error · metrology · yield",
+    ],
+    mission: "Compare array, PVG, and SRG architectures; explain fabrication; diagnose optical/process trade-offs; and defend a design choice.",
+    relationship: "optical engineers, process engineers, and research authors",
+    locale: "international AR optics community",
+    channel: "design review and technical conference",
+    register: "optics-engineering",
+    pressure: "architecture comparison, polarization and diffraction physics, process dependencies, metrology trade-offs, and precise causal language",
+  },
+];
 
 const languages = [
   { name: "Spanish", hello: "Hola" },
@@ -64,6 +131,28 @@ const languages = [
   { name: "Italian", hello: "Ciao" },
   { name: "Mandarin", hello: "你好" },
 ];
+const localeProfiles = {
+  English: [
+    { id: "en-US", label: "United States", audience: "workplace + social life" },
+  ],
+  French: [
+    { id: "fr-FR", label: "Paris / France", audience: "young professionals" },
+    { id: "fr-CA", label: "Québec", audience: "young professionals" },
+    { id: "fr-BE", label: "Belgium", audience: "young professionals" },
+    { id: "fr-AF", label: "Francophone Africa", audience: "urban professional contexts" },
+  ],
+  Spanish: [
+    { id: "es-MX", label: "Mexico City / Mexico", audience: "young professionals" },
+    { id: "es-ES", label: "Madrid / Spain", audience: "young professionals" },
+    { id: "es-AR", label: "Buenos Aires / Argentina", audience: "young professionals" },
+    { id: "es-US", label: "United States Spanish", audience: "bilingual workplace + social life" },
+  ],
+};
+const defaultLocale = (target) => (localeProfiles[target] || [])[0] || {
+  id: practiceContent?.[target]?.lang || "und",
+  label: "International",
+  audience: "general adult contexts",
+};
 const coachPrompts = {
   English: {
     lang: "en-US",
@@ -319,6 +408,18 @@ function offlineCoachReply(target, utterance, intent, responseTurn) {
       memoryHook: `Use “${item.focus}” in your next sentence.`,
     };
   }
+  if (intent === "bridge") {
+    return {
+      reply: item.reply,
+      replyTranslation: item.translation,
+      praise: "Using your strongest language kept the real meaning alive.",
+      grammarCorrection: "Luma used your meaning as a bridge. Now try the short target-language version below.",
+      naturalVersion: item.focus,
+      pronunciation: item.pronunciation,
+      vocabulary: item.words,
+      memoryHook: `Make “${item.focus}” yours in the next reply.`,
+    };
+  }
   const offlineRules = {
     Spanish: [
       [/\bYo va\b/gi, "Yo voy", "Use “voy” with yo; “va” belongs with él, ella, or usted."],
@@ -439,6 +540,9 @@ function App() {
   })();
   const [view, setView] = useState("home");
   const [profile, setProfile] = useState(saved);
+  const [learnerModel, setLearnerModel] = useState(() =>
+    readJson("luma-learner-model", createLearnerModel(saved || {})),
+  );
   const [showOnboarding, setShowOnboarding] = useState(!saved);
   const [lesson, setLesson] = useState(0);
   const [listening, setListening] = useState(false);
@@ -453,6 +557,7 @@ function App() {
   const [incomingCall, setIncomingCall] = useState(
     () => new URLSearchParams(location.search).get("coachCall") === "1",
   );
+  const [socialScenario, setSocialScenario] = useState(null);
   const [callCompleteDay, setCallCompleteDay] = useState(
     () => localStorage.getItem("luma-call-complete-day") || "",
   );
@@ -545,6 +650,33 @@ function App() {
     localStorage.setItem("luma-profile", JSON.stringify(p));
     setProfile(p);
     setShowOnboarding(false);
+    setLearnerModel((current) => ({
+      ...(() => {
+        const next = {
+          ...(current || createLearnerModel(p)),
+          profile: {
+            goal: p.goal,
+            domain: p.domain,
+            difficultMoment: p.difficultMoment,
+            focusTracks: ["life", "ai-research", "ar-waveguide"],
+            technicalDomains: {
+              embodiedAI: ["VLM training", "VLA training", "world model training"],
+              arOptics: ["array waveguide", "PVG volume holographic waveguide", "slanted and gradient SRG"],
+            },
+            localeProfile: p.localeProfile,
+          },
+        };
+        localStorage.setItem("luma-learner-model", JSON.stringify(next));
+        return next;
+      })(),
+    }));
+  };
+  const captureEvidence = (evidence) => {
+    setLearnerModel((current) => {
+      const next = recordEvidence(current || createLearnerModel(profile || {}), evidence);
+      localStorage.setItem("luma-learner-model", JSON.stringify(next));
+      return next;
+    });
   };
   const saveCallSettings = (s) => {
     localStorage.setItem("luma-call-settings", JSON.stringify(s));
@@ -593,12 +725,15 @@ function App() {
         done={done}
         setDone={setDone}
         seconds={seconds}
+        learnerModel={learnerModel}
+        captureEvidence={captureEvidence}
       />
     );
   if (view === "memory")
     return (
       <Memory
         profile={profile}
+        learnerModel={learnerModel}
         back={() => setView("home")}
         start={() => {
           setSpoken("");
@@ -624,6 +759,11 @@ function App() {
         callDone={callCompleteDay === localDay()}
         setupCall={() => setShowCallSetup(true)}
         answerCall={() => setIncomingCall(true)}
+        learnerModel={learnerModel}
+        startSocial={(scenario) => {
+          setSocialScenario(scenario);
+          setIncomingCall(true);
+        }}
       />
       {showOnboarding && <Onboarding initial={profile} save={saveProfile} />}{" "}
       {showCallSetup && (
@@ -640,6 +780,9 @@ function App() {
           settings={callSettings}
           complete={completeCall}
           miss={missCall}
+          learnerModel={learnerModel}
+          captureEvidence={captureEvidence}
+          socialScenario={socialScenario}
         />
       )}
     </>
@@ -648,8 +791,20 @@ function App() {
 
 function Onboarding({ initial, save }) {
   const [target, setTarget] = useState(initial?.target || "Spanish");
+  const [localeProfile, setLocaleProfile] = useState(
+    initial?.localeProfile || defaultLocale(initial?.target || "Spanish"),
+  );
   const [goal, setGoal] = useState(initial?.goal || "Speak naturally at work");
   const [minutes, setMinutes] = useState(initial?.minutes || 3);
+  const [domain, setDomain] = useState(
+    initial?.domain || "AI research, technical papers, and academic talks",
+  );
+  const [difficultMoment, setDifficultMoment] = useState(
+    initial?.difficultMoment || "I understand slowly but cannot respond quickly",
+  );
+  const [nativeLanguage, setNativeLanguage] = useState(
+    initial?.nativeLanguage || "English",
+  );
   return (
     <div className="modalback">
       <section className="onboarding">
@@ -669,13 +824,34 @@ function Onboarding({ initial, save }) {
               type="button"
               key={l.name}
               className={target === l.name ? "selected" : ""}
-              onClick={() => setTarget(l.name)}
+              onClick={() => {
+                setTarget(l.name);
+                setLocaleProfile(defaultLocale(l.name));
+              }}
             >
               <b>{l.hello}</b>
               <span>{l.name}</span>
             </button>
           ))}
         </div>
+        {(localeProfiles[target] || []).length > 0 && (
+          <>
+            <label>My real-world language community</label>
+            <div className="localegrid">
+              {localeProfiles[target].map((locale) => (
+                <button
+                  type="button"
+                  key={locale.id}
+                  className={localeProfile.id === locale.id ? "selected" : ""}
+                  onClick={() => setLocaleProfile(locale)}
+                >
+                  <b>{locale.label}</b>
+                  <small>{locale.audience}</small>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <label>My next real goal</label>
         <div className="goals">
           {[
@@ -708,6 +884,30 @@ function Onboarding({ initial, save }) {
             ))}
           </div>
         </div>
+        <label htmlFor="luma-domain">The real material I must master</label>
+        <input
+          id="luma-domain"
+          className="profileinput"
+          value={domain}
+          onChange={(event) => setDomain(event.target.value)}
+          placeholder="e.g. robotics papers, investor meetings, medical conferences"
+        />
+        <label htmlFor="luma-native">My strongest language for explanations</label>
+        <input
+          id="luma-native"
+          className="profileinput"
+          value={nativeLanguage}
+          onChange={(event) => setNativeLanguage(event.target.value)}
+          placeholder="e.g. Mandarin Chinese, English, Japanese"
+        />
+        <label htmlFor="luma-friction">Where I currently get stuck</label>
+        <input
+          id="luma-friction"
+          className="profileinput"
+          value={difficultMoment}
+          onChange={(event) => setDifficultMoment(event.target.value)}
+          placeholder="e.g. fast talks, writing precisely, answering questions"
+        />
         <div className="privacy">
           <ShieldCheck />
           <span>
@@ -727,7 +927,10 @@ function Onboarding({ initial, save }) {
               goal,
               minutes,
               level: "adaptive",
-              nativeLanguage: "English",
+              nativeLanguage: nativeLanguage.trim() || "English",
+              domain: domain.trim(),
+              difficultMoment: difficultMoment.trim(),
+              localeProfile,
             })
           }
         >
@@ -747,7 +950,10 @@ function Home({
   callDone,
   setupCall,
   answerCall,
+  learnerModel,
+  startSocial,
 }) {
+  const action = nextBestAction(learnerModel);
   return (
     <main className="shell">
       <nav>
@@ -779,7 +985,7 @@ function Home({
             your brain remembers—without word lists or homework.
           </p>
           <button type="button" className="primary" onClick={start}>
-            Start today’s 3-minute moment <ArrowRight size={18} />
+            Start my next best 3-minute mission <ArrowRight size={18} />
           </button>
           <div className="micro">
             <span>
@@ -812,6 +1018,14 @@ function Home({
             <span>· 2 min warm-up</span>
           </div>
         </div>
+      </section>
+      <section className="adaptivebrief">
+        <div>
+          <span className="kicker">WHY THIS, WHY NOW</span>
+          <h2>{action.mode === "transfer-retrieval" ? "A memory is ready to become usable." : `Luma needs one piece of ${action.skill} evidence.`}</h2>
+          <p>{action.reason} The task uses your world: {profile?.domain || "daily life"}.</p>
+        </div>
+        <span className="adaptivetag">ADAPTS AFTER EVERY RESPONSE</span>
       </section>
       <section className="callstrip">
         <div>
@@ -876,6 +1090,57 @@ function Home({
                 <ArrowRight />
               </span>
             </button>
+          ))}
+        </div>
+      </section>
+      <section className="sociallab">
+        <div className="sectiontitle">
+          <div>
+            <span className="kicker">SOCIAL IMMERSION LAB</span>
+            <h2>Practice belonging—not textbook dialogue</h2>
+            <p>Each person reacts differently. Repair misunderstandings, read the room, and shift register while the conversation is still moving.</p>
+          </div>
+        </div>
+        <div className="socialgrid">
+          {socialScenarios.map((scenario) => (
+            <button type="button" key={scenario.id} onClick={() => startSocial({
+              ...scenario,
+              locale: profile?.localeProfile?.label || scenario.locale,
+              localeCode: profile?.localeProfile?.id,
+              audience: profile?.localeProfile?.audience,
+            })}>
+              <span>{scenario.icon}</span>
+              <b>{scenario.title}</b>
+              <small>{scenario.relationship} · {scenario.register}</small>
+              <ArrowRight />
+            </button>
+          ))}
+        </div>
+        <p className="freshnessnote"><ShieldCheck /> Slang is taught with locale, relationship, channel, source date, and “safe to use” guidance. Unverified trends are never presented as current fact.</p>
+      </section>
+      <section className="domainlab">
+        <div className="sectiontitle">
+          <div>
+            <span className="kicker">YOUR THREE CONTEXT WORLDS</span>
+            <h2>Learn the language inside the work and life it must perform</h2>
+            <p>A term becomes durable only after you understand it in source material, explain it aloud, use its common partners, and retrieve it in a changed situation.</p>
+          </div>
+        </div>
+        <div className="domaintracks">
+          {domainTracks.map((track) => (
+            <article key={track.id}>
+              <span className="domainicon">{track.icon}</span>
+              <h3>{track.title}</h3>
+              <p>{track.subtitle}</p>
+              <div>{track.terms.map((term) => <span key={term}>{term}</span>)}</div>
+              {track.knowledgeMap && (
+                <ul>{track.knowledgeMap.map((item) => <li key={item}>{item}</li>)}</ul>
+              )}
+              <small>{track.mission}</small>
+              <button type="button" onClick={() => startSocial({ ...track, title: track.title })}>
+                Enter this context <ArrowRight />
+              </button>
+            </article>
           ))}
         </div>
       </section>
@@ -1006,7 +1271,7 @@ function CoachCallSetup({ initial, close, save, test }) {
   );
 }
 
-function CoachCall({ profile, settings, complete, miss }) {
+function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvidence, socialScenario }) {
   const [answered, setAnswered] = useState(false);
   const [spoken, setSpoken] = useState("");
   const [listening, setListening] = useState(false);
@@ -1016,6 +1281,9 @@ function CoachCall({ profile, settings, complete, miss }) {
   const [recognitionConfidence, setRecognitionConfidence] = useState(null);
   const [learnerTurns, setLearnerTurns] = useState(0);
   const prompt = coachPrompts[profile?.target] || coachPrompts.English;
+  const activeScenario = socialScenario
+    ? `${socialScenario.title}; speaking with ${socialScenario.relationship}; ${socialScenario.channel}; ${socialScenario.register}; challenge: ${socialScenario.pressure}; mission: ${socialScenario.mission || "complete a socially meaningful exchange"}; anchor language: ${(socialScenario.terms || []).join(", ") || "selected from the learner's response"}; technical knowledge map: ${(socialScenario.knowledgeMap || []).join(" | ") || "not applicable"}`
+    : "a proactive morning accountability call before work";
   const [messages, setMessages] = useState(() => [
     {
       role: "coach",
@@ -1091,9 +1359,10 @@ function CoachCall({ profile, settings, complete, miss }) {
   };
   const respond = async (intent = "respond") => {
     const isAnswer = intent === "respond";
-    if (isAnswer && !spoken.trim()) {
+    const usesComposer = isAnswer || intent === "bridge";
+    if (usesComposer && !spoken.trim()) {
       setCallNotice(
-        `Say or type your answer in ${profile?.target || "Spanish"} first. You can also ask for help below.`,
+        `Say it in ${profile?.target || "Spanish"}, or use ${profile?.nativeLanguage || "your strongest language"} and tap “Help me say this.”`,
       );
       answerRef.current?.focus();
       return;
@@ -1102,7 +1371,7 @@ function CoachCall({ profile, settings, complete, miss }) {
       clarify: "I didn’t understand. Please explain and ask me again.",
       vocabulary: "Explain the important words in your last sentence.",
     };
-    const learnerText = isAnswer ? spoken.trim() : helpLabels[intent];
+    const learnerText = usesComposer ? spoken.trim() : helpLabels[intent];
     const nextHistory = [
       ...messages,
       { role: "learner", text: learnerText, intent },
@@ -1116,12 +1385,14 @@ function CoachCall({ profile, settings, complete, miss }) {
         body: JSON.stringify({
           targetLanguage: profile?.target || "Spanish",
           nativeLanguage: profile?.nativeLanguage || "English",
-          scenario: "a proactive morning accountability call before work",
+          scenario: activeScenario,
+          socialContext: socialScenario,
           utterance: learnerText,
           intent,
           recognitionConfidence,
           turn: learnerTurns,
           history: nextHistory.slice(-8),
+          learnerModel: learnerSnapshot(learnerModel),
         }),
       });
       if (!r.ok) throw new Error();
@@ -1136,6 +1407,16 @@ function CoachCall({ profile, settings, complete, miss }) {
         },
       ]);
       speakCoach(result.reply);
+      if (isAnswer) captureEvidence?.({
+        skill: "speaking",
+        score: result.understood === false ? 0.35 : 0.78,
+        hesitation: recognitionConfidence !== null && recognitionConfidence < 0.7 ? 0.35 : 0.1,
+        transfer: learnerTurns > 0,
+        memoryKey: result.naturalVersion || learnerText,
+        phrase: result.naturalVersion || learnerText,
+        intent: "explain a real work goal",
+        context: profile?.domain || "morning work call",
+      });
     } catch {
       const result = offlineCoachReply(
         profile?.target || "Spanish",
@@ -1185,7 +1466,7 @@ function CoachCall({ profile, settings, complete, miss }) {
     <div className="incoming calllive">
       <div className="livehead">
         <span className="pulse"></span>
-        <b>Luma · live coach</b>
+        <b>Luma · {socialScenario ? socialScenario.title : "live coach"}</b>
         <span>{learnerTurns}/3 replies</span>
       </div>
       <section className="conversationcall">
@@ -1194,9 +1475,17 @@ function CoachCall({ profile, settings, complete, miss }) {
           Have a real <em>conversation.</em>
         </h1>
         <p>
-          Answer, ask questions, and try again. Luma explains what you miss and
-          coaches every reply in {profile?.target || "Spanish"}.
+          Answer, ask what anything means, and try again. If the words are not
+          there yet, say your meaning in {profile?.nativeLanguage || "your strongest language"}—Luma will bridge it into {profile?.target || "Spanish"}.
         </p>
+        {socialScenario && (
+          <div className="socialcontext">
+            <span>{socialScenario.locale}</span>
+            <span>{socialScenario.relationship}</span>
+            <span>{socialScenario.channel}</span>
+            <span>{socialScenario.register}</span>
+          </div>
+        )}
         <div className="callthread" ref={threadRef} aria-live="polite">
           {messages.map((message, index) => (
             <article className={`bubblemsg ${message.role}`} key={index}>
@@ -1273,6 +1562,13 @@ function CoachCall({ profile, settings, complete, miss }) {
                   ))}
                 </article>
               )}
+              {feedback?._meta?.languagePulse && (
+                <article>
+                  <span>LANGUAGE FRESHNESS</span>
+                  <p>{feedback._meta.languagePulse.live ? `Live language pulse · ${feedback._meta.languagePulse.updatedAt}` : "Baseline corpus only—not verified as a current trend."}</p>
+                  <small>{feedback._meta.languagePulse.source || "No live source configured"}</small>
+                </article>
+              )}
             </div>
             {feedback.naturalVersion && (
               <button
@@ -1294,6 +1590,9 @@ function CoachCall({ profile, settings, complete, miss }) {
           </button>
           <button type="button" disabled={loading} onClick={() => respond("vocabulary")}>
             <BookOpen /> Explain the words
+          </button>
+          <button type="button" disabled={loading} onClick={() => respond("bridge")}>
+            <Globe2 /> Help me say this
           </button>
           <button
             type="button"
@@ -1325,7 +1624,7 @@ function CoachCall({ profile, settings, complete, miss }) {
               setRecognitionConfidence(null);
               setCallNotice("");
             }}
-            placeholder={`Answer or ask in ${profile?.target || "Spanish"}…`}
+            placeholder={`Use ${profile?.target || "Spanish"}—or ${profile?.nativeLanguage || "your strongest language"} when you need a bridge…`}
           />
           <button
             type="button"
@@ -1380,6 +1679,8 @@ function Lesson({
   done,
   setDone,
   seconds,
+  learnerModel,
+  captureEvidence,
 }) {
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1407,6 +1708,8 @@ function Lesson({
           targetLanguage: profile?.target || "Spanish",
           scenario: "ordering coffee before a work meeting",
           utterance: spoken,
+          nativeLanguage: profile?.nativeLanguage || "English",
+          learnerModel: learnerSnapshot(learnerModel),
         }),
       });
       if (!r.ok) throw new Error("demo");
@@ -1421,6 +1724,15 @@ function Lesson({
           "Luma will reuse this request frame tomorrow in a new real-life situation.",
       });
     } finally {
+      captureEvidence?.({
+        skill: "speaking",
+        score: 0.78,
+        hesitation: spoken.trim() === copy.prompt ? 0.05 : 0.18,
+        memoryKey: copy.chunk,
+        phrase: copy.chunk,
+        intent: "make a polite request",
+        context: "coffee shop",
+      });
       setLoading(false);
       advance();
     }
@@ -1643,8 +1955,10 @@ function Lesson({
   );
 }
 
-function Memory({ profile, back, start }) {
+function Memory({ profile, learnerModel, back, start }) {
   const copy = practiceContent[profile?.target] || practiceContent.Spanish;
+  const memories = Object.values(learnerModel?.memories || {});
+  const action = nextBestAction(learnerModel);
   return (
     <main className="memoryShell">
       <nav>
@@ -1655,7 +1969,7 @@ function Memory({ profile, back, start }) {
           <span className="brandmark">L</span>
           <span>Your living memory</span>
         </div>
-        <span>12 moments learned</span>
+        <span>{memories.length} living {memories.length === 1 ? "memory" : "memories"}</span>
       </nav>
       <section className="memoryhero">
         <span className="kicker">NOT A VOCABULARY LIST</span>
@@ -1672,7 +1986,7 @@ function Memory({ profile, back, start }) {
           <div className="mapcenter">
             YOU
             <span>
-              42 useful
+              {memories.reduce((sum, item) => sum + (item.contexts?.length || 0), 0)} useful
               <br />
               connections
             </span>
@@ -1697,10 +2011,9 @@ function Memory({ profile, back, start }) {
             NEXT BEST REAPPEARANCE ·{" "}
             {profile?.target?.toUpperCase() || "SPANISH"}
           </span>
-          <h2>“{copy.chunk}…”</h2>
+          <h2>“{action.memory?.phrase || copy.chunk}…”</h2>
           <p>
-            Next time, this phrase moves from ordering coffee to asking for
-            clarification in your meeting.
+            Next time, this language moves beyond {action.memory?.contexts?.at(-1) || "its first situation"} into a new {profile?.domain || "real-life"} task.
           </p>
           <div className="retention">
             <span>Estimated memory</span>

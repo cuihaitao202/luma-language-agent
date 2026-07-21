@@ -59,12 +59,14 @@ function json(request, data, status = 200) {
 
 function coachInstructions(target, nativeLanguage) {
   return `You are Luma, an expert interactive second-language teacher for busy adults.
+Your job is not to complete a chat turn; it is to build transferable listening, speaking, reading, and writing capability for this particular learner.
 Continue a real conversation in ${target}; do not end after one answer. Ask exactly one short, relevant follow-up question in ${target} that adapts to what the learner said.
 All explanations, meanings, and coaching must be in ${nativeLanguage}. The reply itself must be in ${target}, followed by its ${nativeLanguage} translation in replyTranslation.
 For every learner response: confirm whether the intended meaning landed, identify the single highest-value grammar or clarity improvement, provide a natural corrected version in ${target}, and give one concrete pronunciation focus. Pronunciation guidance must honestly be based on the speech-recognition transcript—not claim acoustic analysis.
 Explain one or two useful words from your reply in context, each with a short meaning in ${nativeLanguage} and an example in ${target}.
 The reply field must contain only ${target}; never mix an explanation in ${nativeLanguage} into reply. Put explanations in grammarCorrection, vocabulary, and replyTranslation.
 If intent is clarify, use grammarCorrection to explain the previous sentence phrase by phrase in ${nativeLanguage}, then use reply to ask the question again more simply in ${target}. If intent is vocabulary, explain the important words in vocabulary before continuing.
+The learner may use ${nativeLanguage} whenever they cannot yet express an important meaning in ${target}. This is a bridge, not a failure. If intent is bridge, infer the intended meaning, put one short natural ${target} version in naturalVersion, explain it briefly in ${nativeLanguage}, and ask the learner to personalize or reuse it. Do not correct the learner's ${nativeLanguage}. If the learner asks what something means—even without selecting a help button—answer the meaning question before continuing.
 Be warm, concise, adult, and specific. Never overwhelm the learner with a list of every error. Return valid JSON only.`;
 }
 
@@ -84,6 +86,29 @@ function parseModelJson(text) {
   return JSON.parse(clean);
 }
 
+async function loadLanguagePulse(env, locale) {
+  const endpoint = String(
+    env.LANGUAGE_PULSE_URL ||
+      "https://cuihaitao202.github.io/luma-language-agent/language-pulse.json",
+  );
+  try {
+    const url = new URL(endpoint);
+    if (env.LANGUAGE_PULSE_URL) url.searchParams.set("locale", locale || "en-US");
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error("pulse unavailable");
+    const data = await response.json();
+    const selected = data.locales?.[locale] || data;
+    return {
+      live: Boolean(selected.live),
+      source: String(selected.source || url.hostname).slice(0, 160),
+      updatedAt: selected.updatedAt ? String(selected.updatedAt).slice(0, 40) : null,
+      items: Array.isArray(selected.items) ? selected.items.slice(0, 12) : [],
+    };
+  } catch {
+    return { live: false, source: "Live source unavailable; using baseline corpus guidance", updatedAt: null, items: [] };
+  }
+}
+
 async function coach(request, env) {
   if (!env.OPENAI_API_KEY)
     return json(request, { demo: true, error: "Live coaching is not configured." }, 503);
@@ -92,11 +117,24 @@ async function coach(request, env) {
   const nativeLanguage = String(body.nativeLanguage || "English").slice(0, 40);
   const scenario = String(body.scenario || "a daily real-life conversation").slice(0, 180);
   const utterance = String(body.utterance || "").slice(0, 1000);
-  const intent = ["respond", "clarify", "vocabulary"].includes(body.intent)
+  const intent = ["respond", "clarify", "vocabulary", "bridge"].includes(body.intent)
     ? body.intent
     : "respond";
   const confidence = Number(body.recognitionConfidence);
   const history = normalizedHistory(body.history);
+  const learnerModel = body.learnerModel && typeof body.learnerModel === "object"
+    ? JSON.stringify(body.learnerModel).slice(0, 2400)
+    : "No prior learner evidence yet; diagnose gently through the task.";
+  const socialContext = body.socialContext && typeof body.socialContext === "object"
+    ? body.socialContext
+    : null;
+  const languagePulse = await loadLanguagePulse(
+    env,
+    socialContext?.localeCode || socialContext?.locale || "en-US",
+  );
+  const pulseContext = languagePulse.live
+    ? JSON.stringify({ source: languagePulse.source, updatedAt: languagePulse.updatedAt, items: languagePulse.items }).slice(0, 2600)
+    : "No verified live pulse. Do not call any slang, abbreviation, meme, or internet expression current or trending.";
   if (!utterance.trim()) return json(request, { error: "An utterance is required." }, 400);
 
   const baseUrl = String(env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -105,7 +143,7 @@ async function coach(request, env) {
     "Content-Type": "application/json",
   };
   const requestedModel = env.OPENAI_MODEL || "gpt-5.6-terra";
-  const learnerContext = `Scenario: ${scenario}\nIntent: ${intent}\nSpeech-recognition confidence: ${Number.isFinite(confidence) ? confidence : "not available"}\nLatest learner message: ${utterance}`;
+  const learnerContext = `Scenario: ${scenario}\nIntent: ${intent}\nSpeech-recognition confidence: ${Number.isFinite(confidence) ? confidence : "not available"}\nLearner model: ${learnerModel}\nSocial context: ${JSON.stringify(socialContext)}\nVerified language pulse: ${pulseContext}\nLatest learner message: ${utterance}\nUse the learner model only as a provisional hypothesis. Keep the task meaningful, tune support to observed hesitation, retrieve previously learned language when relevant, and vary the context to test transfer. For rare professional language, teach a reusable phrase or collocation in its authentic rhetorical function—not an isolated definition. In AI and AR technical contexts, cycle through: infer the term from a paper-like sentence; give a precise plain-language explanation; notice its common collocations and contrast terms; ask the learner to explain the mechanism aloud; challenge one causal claim or trade-off; later retrieve it in a design review, paper Q&A, or written abstract. Distinguish an established technical term from a newly coined paper term, and never invent a paper citation. Simulate the relationship, channel, power distance, pace, and listener reaction turn by turn. Teach pragmatic moves such as entering a group, soft disagreement, repair, humor, and exiting naturally. For colloquialisms, abbreviations, or internet language, state the locale, relationship/channel fit, and whether the learner should actively use it or only recognize it. Treat language as current only when supported by the verified pulse above.`;
 
   let apiResponse = await fetch(`${baseUrl}/responses`, {
     method: "POST",
@@ -170,6 +208,11 @@ async function coach(request, env) {
       requestedModel,
       reportedModel: reportedModel || requestedModel,
       apiSurface,
+      languagePulse: {
+        live: languagePulse.live,
+        source: languagePulse.source,
+        updatedAt: languagePulse.updatedAt,
+      },
     },
   });
 }

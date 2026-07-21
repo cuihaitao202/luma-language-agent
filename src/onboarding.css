@@ -62,6 +62,11 @@
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
+.localegrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.localegrid button { border: 1px solid #18231d1c; border-radius: 9px; padding: 11px; background: #fff; text-align: left; cursor: pointer; }
+.localegrid b, .localegrid small { display: block; }
+.localegrid b { font-size: 11px; }
+.localegrid small { margin-top: 3px; color: var(--muted); font-size: 9px; }
 .languagegrid button,
 .goals button,
 .minute button {
@@ -126,6 +131,16 @@
   border-radius: 9px;
   margin: 14px 0;
 }
+.profileinput {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #18231d22;
+  border-radius: 9px;
+  background: #fff;
+  padding: 12px 13px;
+  color: var(--ink);
+  font: inherit;
+}
 .privacy svg {
   width: 20px;
   color: var(--green);
@@ -149,6 +164,7 @@
   .languagegrid {
     grid-template-columns: repeat(2, 1fr);
   }
+  .localegrid { grid-template-columns: 1fr; }
   .goals {
     grid-template-columns: 1fr;
   }
