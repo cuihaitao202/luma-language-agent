@@ -1368,11 +1368,16 @@ nav {
 }
 .callcomposer {
   display: grid;
-  grid-template-columns: 64px 1fr 52px;
+  grid-template-columns: 105px 1fr 52px;
   align-items: stretch;
   gap: 9px;
   margin-top: 14px;
 }
+.dualmic { display: grid; gap: 6px; }
+.callcomposer .dualmic .compactmic { width: 105px; min-height: 52px; }
+.nativemic { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 6px; border: 1px solid #d76e4b55; border-radius: 10px; background: #fff3ed; color: var(--green); font-size: 10px; font-weight: 800; cursor: pointer; }
+.nativemic svg { width: 15px; }
+.nativemic.active { background: var(--coral); color: white; }
 .callcomposer .compactmic {
   width: 64px;
   height: auto;
@@ -1549,9 +1554,9 @@ nav {
     margin: 0;
   }
   .callcomposer {
-    grid-template-columns: 56px 1fr 48px;
+    grid-template-columns: 90px 1fr 48px;
   }
-  .callcomposer .compactmic {
-    width: 56px;
+  .callcomposer .dualmic .compactmic {
+    width: 90px;
   }
 }
