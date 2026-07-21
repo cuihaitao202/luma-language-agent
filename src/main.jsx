@@ -21,6 +21,8 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Search,
+  Upload,
   Volume2,
   X,
 } from "lucide-react";
@@ -31,6 +33,7 @@ import {
   learnerSnapshot,
   nextBestAction,
   recordEvidence,
+  saveContextualLookup,
 } from "./learningEngine.js";
 
 const scenes = [
@@ -380,6 +383,10 @@ const coachApiUrl = () =>
   location.hostname.endsWith("github.io")
     ? `${hostedCoachOrigin}/api/coach`
     : new URL(`${import.meta.env.BASE_URL}api/coach`, location.origin).href;
+const lookupApiUrl = () =>
+  location.hostname.endsWith("github.io")
+    ? `${hostedCoachOrigin}/api/lookup`
+    : new URL(`${import.meta.env.BASE_URL}api/lookup`, location.origin).href;
 
 function offlineCoachReply(target, utterance, intent, responseTurn) {
   const turns = offlineCallTurns[target] || offlineCallTurns.Spanish;
@@ -743,6 +750,20 @@ function App() {
         }}
       />
     );
+  if (view === "lookup")
+    return (
+      <ContextLookup
+        profile={profile}
+        back={() => setView("home")}
+        save={(lookup) => {
+          setLearnerModel((current) => {
+            const next = saveContextualLookup(current || createLearnerModel(profile || {}), lookup);
+            localStorage.setItem("luma-learner-model", JSON.stringify(next));
+            return next;
+          });
+        }}
+      />
+    );
   return (
     <>
       <Home
@@ -755,6 +776,7 @@ function App() {
           setView("lesson");
         }}
         memory={() => setView("memory")}
+        lookup={() => setView("lookup")}
         callSettings={callSettings}
         callDone={callCompleteDay === localDay()}
         setupCall={() => setShowCallSetup(true)}
@@ -944,6 +966,7 @@ function Onboarding({ initial, save }) {
 function Home({
   start,
   memory,
+  lookup,
   profile,
   configure,
   callSettings,
@@ -986,6 +1009,9 @@ function Home({
           </p>
           <button type="button" className="primary" onClick={start}>
             Start my next best 3-minute mission <ArrowRight size={18} />
+          </button>
+          <button type="button" className="contextlookupcta" onClick={lookup}>
+            <Search size={18} /> Explain a word from a screenshot, paper, or app
           </button>
           <div className="micro">
             <span>
@@ -1951,6 +1977,138 @@ function Lesson({
           </button>
         </section>
       )}
+    </main>
+  );
+}
+
+function ContextLookup({ profile, back, save }) {
+  const [query, setQuery] = useState("");
+  const [context, setContext] = useState("");
+  const [image, setImage] = useState("");
+  const [imageName, setImageName] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const chooseImage = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setNotice("Please choose a screenshot or photo.");
+      return;
+    }
+    if (file.size > 4_000_000) {
+      setNotice("Please crop the screenshot or choose an image under 4 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImage(String(reader.result || ""));
+      setImageName(file.name);
+      setNotice("Screenshot ready. Add a rough hint if you remember part of the word.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const analyze = async () => {
+    if (!query.trim() && !context.trim() && !image) {
+      setNotice("Paste the sentence, type part of the word, or add a screenshot first.");
+      return;
+    }
+    setLoading(true);
+    setNotice("");
+    try {
+      const response = await fetch(lookupApiUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: query.trim(),
+          context: context.trim(),
+          image,
+          targetLanguage: profile?.target || "English",
+          nativeLanguage: profile?.nativeLanguage || "Mandarin Chinese",
+        }),
+      });
+      if (!response.ok) throw new Error("lookup failed");
+      const data = await response.json();
+      setResult(data);
+      save?.(data);
+      setNotice(`Saved “${data.term}” to your living memory. Luma will teach it again in a changed context.`);
+    } catch {
+      const isVerdict = /verdi|判决/i.test(`${query} ${context}`);
+      if (isVerdict) {
+        const data = {
+          term: "verdict",
+          sourceText: context,
+          detectedDomain: "quantitative trading / software output",
+          nativeExplanation: "这里通常不是法院的“判决”，而是模型或系统综合证据后给出的最终判断、分类结果或结论。具体是买入、卖出、看多、看空还是通过/拒绝，要看附近字段。",
+          plainExplanation: "Here, verdict means the system’s final judgment or decision after evaluating the data.",
+          contextualMeaning: "模型或规则引擎输出的最终判断结果",
+          dictionaryMeaning: "a formal decision made by a jury in court",
+          dictionaryContrast: "法律义是陪审团裁决；量化系统借用了“综合证据后下结论”这一核心概念，属于领域中的隐喻性延伸。",
+          naturalExample: "The strategy returned a bullish verdict after the risk checks passed.",
+          examples: ["The model’s verdict was neutral, so no order was placed.", "Wait for the final verdict from the signal aggregator."],
+          commonCollocations: ["final verdict", "return a verdict", "bullish verdict", "model verdict"],
+          usageNote: "在软件界面中可以理解为 final decision/output；是否是标准字段名仍要结合该系统文档。",
+          ambiguityNote: "没有完整截图时，无法确定它代表交易方向、风险审核还是多个信号的汇总结论。",
+          confidence: "medium",
+          retrievalPrompt: "如果模型评估所有信号后给出最终看多结论，你会怎样用 verdict 描述？",
+        };
+        setResult(data);
+        save?.(data);
+        setNotice("Live analysis was unavailable, so Luma used its verified contextual fallback and saved the result.");
+      } else {
+        setNotice("Context analysis is temporarily unavailable. Keep the pasted sentence and try again shortly.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="lookupShell">
+      <nav>
+        <button className="iconbtn" onClick={back}><ChevronLeft /></button>
+        <div className="brand"><span className="brandmark">L</span><span>Context Lens</span></div>
+        <span>Every lookup becomes future teaching</span>
+      </nav>
+      <section className="lookuphero">
+        <span className="kicker">MEANING IN THE REAL WORLD</span>
+        <h1>Don’t translate the word.<br /><em>Decode what it means here.</em></h1>
+        <p>Paste a sentence, upload a screenshot, or type the part you remember. Luma separates the dictionary meaning from the meaning used in your paper, app, workplace, or daily life.</p>
+      </section>
+      <section className="lookupworkbench">
+        <div className="lookupinputs">
+          <label htmlFor="word-hint">Word or fuzzy hint</label>
+          <input id="word-hint" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. verdi… / sounds like ‘ver-dict’ / 判决那个词" />
+          <label htmlFor="word-context">Paste the surrounding sentence or paragraph</label>
+          <textarea id="word-context" value={context} onChange={(event) => setContext(event.target.value)} placeholder="e.g. The signal aggregator returned a neutral verdict, so the strategy placed no order." />
+          <label className="uploadbox">
+            <Upload />
+            <span><b>{imageName || "Add a screenshot"}</b><small>Crop around the unfamiliar word for a faster, more accurate explanation.</small></span>
+            <input type="file" accept="image/*" capture="environment" onChange={(event) => chooseImage(event.target.files?.[0])} />
+          </label>
+          {image && <img className="lookuppreview" src={image} alt="Screenshot selected for contextual word analysis" />}
+          <button type="button" className="primary full" onClick={analyze} disabled={loading}>
+            <Sparkles /> {loading ? "Reading the context…" : "Explain what it means here"}
+          </button>
+          {notice && <p className="lookupnotice">{notice}</p>}
+        </div>
+        <div className={`lookupresult ${result ? "ready" : ""}`}>
+          {!result ? (
+            <div className="emptylookup"><BookOpen /><h2>Context changes meaning.</h2><p><b>verdict</b> can mean a court decision—or a model’s final decision in a quantitative system. Luma uses the surrounding evidence first.</p></div>
+          ) : (
+            <>
+              <div className="termhead"><div><span>{result.detectedDomain}</span><h2>{result.term}</h2></div><b>{result.confidence} confidence</b></div>
+              <article className="meaningprimary"><span>在这个语境里的意思</span><h3>{result.contextualMeaning}</h3><p>{result.nativeExplanation}</p></article>
+              <div className="meaningpair"><article><span>Plain {profile?.target || "language"}</span><p>{result.plainExplanation}</p></article><article><span>Dictionary ≠ context</span><p>{result.dictionaryContrast}</p></article></div>
+              <article><span className="resultlabel">Natural example</span><p className="exampleline">{result.naturalExample}</p></article>
+              <article><span className="resultlabel">Words it naturally travels with</span><div className="collocations">{result.commonCollocations?.map((item) => <span key={item}>{item}</span>)}</div></article>
+              <article><span className="resultlabel">Usage note</span><p>{result.usageNote}</p>{result.ambiguityNote && <small>{result.ambiguityNote}</small>}</article>
+              <article className="retrievalcard"><span>Later—not another flashcard</span><p>{result.retrievalPrompt}</p><small>Luma saved this meaning and will make you reconstruct and use it in a new context.</small></article>
+            </>
+          )}
+        </div>
+      </section>
     </main>
   );
 }

@@ -36,6 +36,29 @@ const coachSchema = {
   ],
 };
 
+const lookupSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    term: { type: "string" },
+    sourceText: { type: "string" },
+    detectedDomain: { type: "string" },
+    nativeExplanation: { type: "string" },
+    plainExplanation: { type: "string" },
+    contextualMeaning: { type: "string" },
+    dictionaryMeaning: { type: "string" },
+    dictionaryContrast: { type: "string" },
+    naturalExample: { type: "string" },
+    examples: { type: "array", items: { type: "string" } },
+    commonCollocations: { type: "array", items: { type: "string" } },
+    usageNote: { type: "string" },
+    ambiguityNote: { type: "string" },
+    confidence: { type: "string", enum: ["high", "medium", "low"] },
+    retrievalPrompt: { type: "string" },
+  },
+  required: ["term", "sourceText", "detectedDomain", "nativeExplanation", "plainExplanation", "contextualMeaning", "dictionaryMeaning", "dictionaryContrast", "naturalExample", "examples", "commonCollocations", "usageNote", "ambiguityNote", "confidence", "retrievalPrompt"],
+};
+
 const allowedOrigins = new Set([
   "https://cuihaitao202.github.io",
   "https://luma-language-agent.taotao918918918.chatgpt.site",
@@ -217,6 +240,38 @@ async function coach(request, env) {
   });
 }
 
+async function contextualLookup(request, env) {
+  if (!env.OPENAI_API_KEY) return json(request, { error: "Live contextual lookup is not configured." }, 503);
+  const body = await request.json();
+  const query = String(body.query || "").slice(0, 300);
+  const context = String(body.context || "").slice(0, 4000);
+  const image = String(body.image || "");
+  const target = String(body.targetLanguage || "English").slice(0, 40);
+  const nativeLanguage = String(body.nativeLanguage || "Mandarin Chinese").slice(0, 40);
+  if (!query.trim() && !context.trim() && !image.startsWith("data:image/")) return json(request, { error: "Add a word, context, or screenshot." }, 400);
+  if (image.length > 5_500_000) return json(request, { error: "Screenshot is too large." }, 413);
+  const instructions = `You are a context-first lexicographer and language teacher. Identify the unknown or fuzzily typed ${target} word from the learner's text or screenshot. Infer its meaning in the supplied sentence and professional domain before giving its general dictionary meaning. Explain fully in ${nativeLanguage}, then explain again in very simple ${target}. Distinguish literal dictionary sense from the sense actually used here. In software, finance, AI, optics, engineering, and research, treat ordinary words used metaphorically or as domain labels carefully. Do not invent missing context: state ambiguity and lower confidence. Give natural, corpus-like examples and collocations, not translated word salad. End with one short recall prompt that will let the learner reconstruct the meaning later. Return JSON only.`;
+  const content = [{ type: "input_text", text: `Fuzzy word or hint: ${query || "not supplied"}\nPasted context: ${context || "not supplied"}` }];
+  if (image.startsWith("data:image/")) content.push({ type: "input_image", image_url: image });
+  const baseUrl = String(env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/responses`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: env.OPENAI_MODEL || "gpt-5.6-terra",
+      reasoning: { effort: "low" },
+      instructions,
+      input: [{ role: "user", content }],
+      text: { format: { type: "json_schema", name: "contextual_word_lookup", strict: true, schema: lookupSchema } },
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) return json(request, { error: "Context analysis failed." }, 502);
+  const outputText = data.output_text || data.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text")?.text;
+  if (!outputText) return json(request, { error: "No contextual explanation was returned." }, 502);
+  return json(request, parseModelJson(outputText));
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -239,6 +294,13 @@ export default {
           { error: "Coach unavailable.", detail: String(error?.message || error) },
           500,
         );
+      }
+    }
+    if (url.pathname === "/api/lookup" && request.method === "POST") {
+      try {
+        return await contextualLookup(request, env);
+      } catch (error) {
+        return json(request, { error: "Context lookup unavailable.", detail: String(error?.message || error) }, 500);
       }
     }
     return env.ASSETS.fetch(request);

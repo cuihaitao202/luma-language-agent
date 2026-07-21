@@ -1428,12 +1428,68 @@ nav {
     opacity: 0.55;
   }
 }
+.contextlookupcta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-weight: 700;
+  cursor: pointer;
+}
+.lookupShell { min-height: 100vh; background: #f4f1e9; color: var(--green); }
+.lookupShell nav { max-width: 1180px; margin: auto; }
+.lookuphero { max-width: 1180px; margin: 45px auto 30px; }
+.lookuphero h1 { max-width: 900px; margin: 12px 0; font-size: clamp(42px, 6vw, 78px); line-height: .96; }
+.lookuphero h1 em { color: var(--coral); font-family: Georgia, serif; font-weight: 400; }
+.lookuphero p { max-width: 780px; color: var(--muted); font-size: 17px; line-height: 1.65; }
+.lookupworkbench { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 22px; max-width: 1180px; margin: 0 auto; padding-bottom: 70px; }
+.lookupinputs, .lookupresult { padding: 28px; border: 1px solid #244b3920; border-radius: 22px; background: #fffdf8; box-shadow: 0 16px 45px #263e3020; }
+.lookupinputs label:not(.uploadbox) { display: block; margin: 14px 0 7px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.lookupinputs input, .lookupinputs textarea { box-sizing: border-box; width: 100%; padding: 14px; border: 1px solid #244b3930; border-radius: 12px; background: white; color: var(--green); font: inherit; }
+.lookupinputs textarea { min-height: 150px; resize: vertical; line-height: 1.5; }
+.uploadbox { display: flex; align-items: center; gap: 13px; margin: 15px 0; padding: 15px; border: 1px dashed #244b3960; border-radius: 13px; cursor: pointer; }
+.uploadbox svg { flex: 0 0 auto; }
+.uploadbox span { display: grid; gap: 3px; }
+.uploadbox small { color: var(--muted); line-height: 1.35; }
+.uploadbox input { display: none; }
+.lookuppreview { width: 100%; max-height: 190px; margin-bottom: 14px; object-fit: contain; border-radius: 10px; background: #eeeae0; }
+.lookupnotice { margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.lookupresult { min-height: 520px; }
+.emptylookup { display: grid; place-items: center; align-content: center; height: 100%; padding: 30px; text-align: center; }
+.emptylookup svg { width: 50px; height: 50px; color: var(--coral); }
+.emptylookup p { max-width: 430px; color: var(--muted); line-height: 1.6; }
+.termhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.termhead span, .resultlabel, .meaningprimary > span, .meaningpair span, .retrievalcard > span { color: var(--coral); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.termhead h2 { margin: 3px 0 18px; font: 58px/1 Georgia, serif; }
+.termhead > b { padding: 7px 10px; border-radius: 30px; background: var(--sage); font-size: 11px; text-transform: uppercase; }
+.meaningprimary { padding: 22px; border-radius: 16px; background: var(--green); color: white; }
+.meaningprimary h3 { margin: 8px 0; font-size: 24px; }
+.meaningprimary p { margin-bottom: 0; line-height: 1.6; }
+.meaningpair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 13px 0 20px; }
+.meaningpair article { padding: 16px; border-radius: 13px; background: #f1eee4; }
+.meaningpair p, .lookupresult > article p { line-height: 1.55; }
+.exampleline { padding-left: 15px; border-left: 3px solid var(--coral); font-size: 18px; font-family: Georgia, serif; }
+.collocations { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0 20px; }
+.collocations span { padding: 7px 10px; border-radius: 20px; background: var(--sage); font-size: 12px; }
+.lookupresult article small { display: block; color: var(--muted); line-height: 1.5; }
+.retrievalcard { margin-top: 20px; padding: 18px; border: 1px solid #e26b4a55; border-radius: 14px; background: #fff3ed; }
+.retrievalcard p { margin: 7px 0; font-weight: 700; }
 @keyframes callpulse {
   50% {
     box-shadow: 0 0 0 18px #49a96722;
   }
 }
 @media (max-width: 800px) {
+  .lookuphero { margin: 28px 18px 22px; }
+  .lookuphero h1 { font-size: 44px; }
+  .lookupworkbench { grid-template-columns: 1fr; padding: 0 18px 50px; }
+  .lookupinputs, .lookupresult { padding: 20px; }
+  .meaningpair { grid-template-columns: 1fr; }
+  .termhead h2 { font-size: 44px; }
   .callstrip {
     margin: 0 18px 45px;
     padding: 25px;
