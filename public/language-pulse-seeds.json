@@ -1,0 +1,36 @@
+{
+  "en-US": [
+    { "term": "rage bait", "meaning": "content designed to provoke angry engagement", "register": "internet", "relationship": "recognition-first", "channel": "social media", "age": "broad online use", "caution": "Use descriptively; avoid accusing a person directly without context.", "source": "Oxford Dictionaries API update", "sourceUrl": "https://developer.oxforddictionaries.com/updates", "sourceDate": "2026-05-27" },
+    { "term": "rizz", "meaning": "informal charisma, especially in flirting", "register": "slang", "relationship": "friends", "channel": "speech and social media", "age": "younger-skewing", "caution": "Recognition-first in professional settings.", "source": "Oxford Dictionaries API update", "sourceUrl": "https://developer.oxforddictionaries.com/updates", "sourceDate": "2026-05-27" }
+  ],
+  "fr-FR": [
+    { "term": "j’avoue", "meaning": "I agree / honestly, yes", "register": "informal", "relationship": "friends and close coworkers", "channel": "speech and chat", "age": "young-adult common", "caution": "Not a literal confession in this use.", "source": "Larousse usage baseline + public-post monitoring", "sourceUrl": "https://www.larousse.fr/dictionnaires/francais/", "sourceDate": "2026-07-21" },
+    { "term": "c’est carré", "meaning": "it is well organized / all set", "register": "informal", "relationship": "friends and informal coworkers", "channel": "speech and chat", "age": "younger-skewing", "caution": "Avoid in formal client communication.", "source": "Larousse usage baseline + public-post monitoring", "sourceUrl": "https://www.larousse.fr/dictionnaires/francais/", "sourceDate": "2026-07-21" }
+  ],
+  "fr-CA": [
+    { "term": "c’est le fun", "meaning": "it is fun / enjoyable", "register": "Québec informal", "relationship": "broad casual use", "channel": "speech and chat", "age": "broad", "caution": "Regional Québec usage; not a France default.", "source": "Larousse Francophonie baseline + public-post monitoring", "sourceUrl": "https://www.larousse.fr/dictionnaires/francais/", "sourceDate": "2026-07-21" },
+    { "term": "pantoute", "meaning": "not at all", "register": "Québec familiar", "relationship": "casual", "channel": "mostly speech", "age": "broad regional", "caution": "Recognition-first outside Québec.", "source": "Larousse Francophonie baseline + public-post monitoring", "sourceUrl": "https://www.larousse.fr/dictionnaires/francais/", "sourceDate": "2026-07-21" }
+  ],
+  "fr-BE": [
+    { "term": "non peut-être !", "meaning": "yes, of course!", "register": "Belgian familiar", "relationship": "casual", "channel": "speech", "age": "regional", "caution": "Meaning is pragmatic and can confuse non-Belgian listeners.", "source": "Larousse Francophonie baseline + public-post monitoring", "sourceUrl": "https://www.larousse.fr/dictionnaires/francais/", "sourceDate": "2026-07-21" }
+  ],
+  "fr-AF": [
+    { "term": "on est ensemble", "meaning": "we support each other / we are connected", "register": "regional conversational", "relationship": "social and community", "channel": "speech and chat", "age": "broad in several communities", "caution": "Meaning and frequency vary by country; identify the country before active use.", "source": "Larousse Francophonie baseline + public-post monitoring", "sourceUrl": "https://www.larousse.fr/dictionnaires/francais/", "sourceDate": "2026-07-21" }
+  ],
+  "es-MX": [
+    { "term": "la neta", "meaning": "honestly / the truth", "register": "Mexican informal", "relationship": "friends and close coworkers", "channel": "speech and chat", "age": "broad casual", "caution": "Avoid in formal writing.", "source": "RAE pan-Hispanic baseline + public-post monitoring", "sourceUrl": "https://www.rae.es/dpd/", "sourceDate": "2026-07-21" },
+    { "term": "está cañón", "meaning": "it is very difficult / intense", "register": "Mexican informal", "relationship": "casual", "channel": "speech and chat", "age": "broad casual", "caution": "Meaning depends strongly on context.", "source": "RAE pan-Hispanic baseline + public-post monitoring", "sourceUrl": "https://www.rae.es/dpd/", "sourceDate": "2026-07-21" }
+  ],
+  "es-ES": [
+    { "term": "en plan", "meaning": "like / in a ... way / as in", "register": "Spain informal discourse marker", "relationship": "friends", "channel": "speech and chat", "age": "younger-skewing", "caution": "Easy to overuse; mostly recognition-first for learners.", "source": "RAE pan-Hispanic baseline + public-post monitoring", "sourceUrl": "https://www.rae.es/dpd/", "sourceDate": "2026-07-21" },
+    { "term": "me renta", "meaning": "it is worth it / it works for me", "register": "Spain informal", "relationship": "friends", "channel": "speech and chat", "age": "younger-skewing", "caution": "Not a general pan-Hispanic default.", "source": "RAE pan-Hispanic baseline + public-post monitoring", "sourceUrl": "https://www.rae.es/dpd/", "sourceDate": "2026-07-21" }
+  ],
+  "es-AR": [
+    { "term": "de una", "meaning": "absolutely / right away", "register": "Argentine informal", "relationship": "casual", "channel": "speech and chat", "age": "broad casual", "caution": "Regional frequency varies elsewhere.", "source": "RAE pan-Hispanic baseline + public-post monitoring", "sourceUrl": "https://www.rae.es/dpd/", "sourceDate": "2026-07-21" },
+    { "term": "ni en pedo", "meaning": "absolutely not", "register": "Argentine vulgar slang", "relationship": "close friends only", "channel": "speech and chat", "age": "broad informal", "caution": "Potentially offensive; recognition-first.", "source": "RAE pan-Hispanic baseline + public-post monitoring", "sourceUrl": "https://www.rae.es/dpd/", "sourceDate": "2026-07-21" }
+  ],
+  "es-US": [
+    { "term": "textear", "meaning": "to text", "register": "US Spanish conversational", "relationship": "broad casual", "channel": "speech and chat", "age": "broad", "caution": "Code-contact form; formal alternatives vary.", "source": "RAE/ANLE baseline + public-post monitoring", "sourceUrl": "https://www.rae.es/dpd/", "sourceDate": "2026-07-21" },
+    { "term": "parquear", "meaning": "to park", "register": "US/Latin American regional", "relationship": "broad casual", "channel": "speech", "age": "broad regional", "caution": "Regional; aparcar or estacionar may be expected elsewhere.", "source": "RAE/ANLE baseline + public-post monitoring", "sourceUrl": "https://www.rae.es/dpd/", "sourceDate": "2026-07-21" }
+  ]
+}

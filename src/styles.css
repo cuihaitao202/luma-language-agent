@@ -816,6 +816,55 @@ nav {
     display: none;
   }
 }
+
+.adaptivebrief {
+  margin: -18px auto 44px;
+  max-width: 1120px;
+  padding: 22px 26px;
+  border: 1px solid #294f3c24;
+  border-radius: 16px;
+  background: var(--sage);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.sociallab { max-width: 1120px; margin: 0 auto 70px; }
+.sociallab .sectiontitle p { max-width: 650px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.socialgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.socialgrid button { min-height: 116px; padding: 18px; border: 1px solid #18231d1c; border-radius: 13px; background: #fff; text-align: left; cursor: pointer; position: relative; }
+.socialgrid button > span { font-size: 22px; display: block; margin-bottom: 9px; }
+.socialgrid button b { display: block; font-family: "Instrument Serif"; font-size: 20px; font-weight: 400; }
+.socialgrid button small { display: block; margin-top: 5px; padding-right: 24px; color: var(--muted); }
+.socialgrid button svg { position: absolute; right: 15px; bottom: 15px; width: 16px; }
+.freshnessnote { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 10px; }
+.freshnessnote svg { width: 16px; color: var(--green); }
+.socialcontext { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.socialcontext span { padding: 6px 9px; border-radius: 20px; background: var(--sage); color: var(--green); font-size: 9px; }
+.domainlab { max-width: 1120px; margin: 0 auto 70px; }
+.domainlab .sectiontitle p { max-width: 700px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.domaintracks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.domaintracks article { padding: 22px; border-radius: 16px; background: #18231d; color: var(--paper); }
+.domainicon { color: var(--coral); font-size: 24px; }
+.domaintracks h3 { margin: 12px 0 4px; font-family: "Instrument Serif"; font-size: 24px; font-weight: 400; }
+.domaintracks article > p { min-height: 38px; margin: 0 0 13px; color: #f7f0e4aa; font-size: 11px; }
+.domaintracks article > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.domaintracks article > div span { padding: 5px 7px; border: 1px solid #ffffff20; border-radius: 5px; font-size: 9px; }
+.domaintracks ul { min-height: 162px; margin: 14px 0 0; padding: 12px 12px 12px 25px; border-radius: 8px; background: #ffffff08; color: #f7f0e4c7; font-size: 9px; line-height: 1.55; }
+.domaintracks li + li { margin-top: 5px; }
+.domaintracks article > small { display: block; min-height: 48px; margin: 15px 0; color: #f7f0e4bb; line-height: 1.45; }
+.domaintracks button { width: 100%; display: flex; align-items: center; justify-content: space-between; border: 0; border-radius: 9px; padding: 11px; background: var(--coral); color: white; cursor: pointer; }
+.domaintracks button svg { width: 16px; }
+.adaptivebrief h2 { margin: 6px 0; font-family: "Instrument Serif"; font-size: 27px; font-weight: 400; }
+.adaptivebrief p { margin: 0; color: var(--muted); font-size: 12px; }
+.adaptivetag { white-space: nowrap; color: var(--green); font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+@media (max-width: 800px) {
+  .adaptivebrief { margin: -18px 18px 38px; align-items: flex-start; flex-direction: column; }
+  .sociallab { margin: 0 18px 50px; }
+  .socialgrid { grid-template-columns: 1fr; }
+  .domainlab { margin: 0 18px 50px; }
+  .domaintracks { grid-template-columns: 1fr; }
+}
 .callstrip {
   max-width: 1240px;
   margin: 0 auto 64px;
@@ -1294,7 +1343,7 @@ nav {
 }
 .helpactions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin: 16px 0;
 }

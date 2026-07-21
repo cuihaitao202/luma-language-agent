@@ -45,6 +45,24 @@ The MVP proves four differentiators:
 4. **Generative reappearance**: the phrase returns in a different life context.
 5. **Proactive accountability**: the agent initiates a daily call instead of waiting for the learner to open a course.
 
+## Adaptive learning engine
+
+Luma now keeps a small, local, evidence-based learner model instead of assigning a permanent level. Each meaningful response updates a provisional estimate for listening, speaking, reading, or writing, plus hesitation, successful retrieval, and cross-context transfer. The scheduler chooses the next task from the learner's weakest evidenced capability and the memory most likely to become unavailable soon.
+
+Onboarding captures the learner's real professional domain and current point of friction. The live coach receives that model as a hypothesis—not a label—and uses it to elicit new evidence, tune scaffolding, retrieve useful language, and move it into a different situation. Specialized terms are treated as phrase-plus-collocation-plus-rhetorical-function memories grounded in the learner's papers, talks, and meetings, rather than as a vocabulary list.
+
+The implementation is deliberately honest about its limits: transcript confidence is not phoneme analysis, retention is estimated rather than measured directly, and the model must revise itself from observed performance. Run `npm test` to verify learner-model updating, stability growth, and due-memory selection.
+
+## Social immersion and living language
+
+The Social Immersion Lab varies relationship, locale, channel, register, conversational pressure, and listener reaction—not merely the background story. Initial scenarios cover coworker lunch, a friends' group chat, a house party, a community meetup, team chat, and a conference reception. The coach trains interactional moves such as entering a group, handling interruption, repairing misunderstanding, soft disagreement, reading a hesitant reaction, and leaving naturally.
+
+Current slang and internet language require provenance. Configure `LANGUAGE_PULSE_URL` with an HTTPS JSON feed that accepts a `locale` query parameter and returns `{ source, updatedAt, items }`. Luma passes only that bounded, dated pulse to the coach. When the feed is absent or unavailable, the UI says **baseline corpus only** and the model is explicitly forbidden from describing slang as current or trending. Every colloquial item should be taught with locale, relationship/channel fit, active-use versus recognition-only advice, source, and date.
+
+## Three context worlds
+
+The default learner has three parallel context tracks: everyday life and social fluency; embodied-AI training across VLMs, VLAs, and world models; and AR optics across array waveguides, polarization-volume-grating (PVG) volume-holographic waveguides, and slanted/gradient surface-relief gratings (SRGs). The professional map includes optical design, polarization/diffraction physics, fabrication, metrology, data/training pipelines, evaluation, deployment, and current papers. Technical language is stored and practiced as source sentence + contextual meaning + collocations/contrast terms + mechanism explanation + rhetorical function + successful retrieval in a changed task. The coach moves a term across paper reading, listening to a talk, explaining it aloud, skeptical Q&A, design review, and abstract writing rather than presenting a standalone word card.
+
 ## Proactive phone mode
 
 1. Open **Turn on daily calls** on the home screen.
@@ -52,6 +70,8 @@ The MVP proves four differentiators:
 3. Allow browser notifications and add the generated recurring event to the phone calendar.
 4. Install Luma to the phone home screen for an app-like call experience.
 5. When Luma calls, answer and continue a real three-turn conversation. Ask **I didn’t understand**, request word explanations, replay the coach slowly, or retry a corrected sentence at any time. The task is not marked complete until three learner replies are submitted.
+
+When a learner cannot understand or express an important meaning, they can speak or type in their strongest language and choose **Help me say this**. Luma turns the intended meaning into one short, usable target-language expression, explains it in the learner's language, and invites immediate reuse. Learners can also ask what any word or sentence means at any point; strategic first-language use is treated as scaffolding, not failure.
 
 The recurring calendar call is the reliable closed-browser transport in this MVP. The service worker, installable manifest, notification-click route, call screen, retry state, wake lock, vibration, browser speech recognition, and GPT-5.6 multi-turn coaching are implemented. Speech recognition supplies a transcript and confidence value; Luma gives honest transcript-based pronunciation guidance and does not claim acoustic phoneme scoring. A production deployment can add streaming audio analysis, standards-based Web Push, or a SIP/telephony provider without changing the learner flow. Luma never disables operating-system emergency controls and includes an explicit pause option.
 

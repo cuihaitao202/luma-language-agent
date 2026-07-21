@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/build-worker.mjs",
+    "test": "node --test src/*.test.js",
+    "pulse:update": "node scripts/update-language-pulse.mjs",
     "preview": "vite preview",
     "server": "node server.mjs"
   },
