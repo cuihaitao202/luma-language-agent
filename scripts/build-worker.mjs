@@ -1,4 +1,4 @@
-import {mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
+import {copyFile,mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
 import {extname,join,relative,resolve} from 'node:path';
 
 const root=resolve(import.meta.dirname,'..');
@@ -60,3 +60,6 @@ function serveStatic(request,env){
 const source=(await readFile(sourcePath,'utf8')).replace('return env.ASSETS.fetch(request);','return serveStatic(request,env);');
 await mkdir(serverDir,{recursive:true});
 await writeFile(join(serverDir,'index.js'),embedded+source);
+const hostingDir=join(dist,'.openai');
+await mkdir(hostingDir,{recursive:true});
+await copyFile(join(root,'.openai','hosting.json'),join(hostingDir,'hosting.json'));
