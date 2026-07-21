@@ -387,6 +387,17 @@ const lookupApiUrl = () =>
   location.hostname.endsWith("github.io")
     ? `${hostedCoachOrigin}/api/lookup`
     : new URL(`${import.meta.env.BASE_URL}api/lookup`, location.origin).href;
+const speechLocaleFor = (language = "") => {
+  const value = language.toLocaleLowerCase();
+  if (/mandarin|chinese|中文|普通话|汉语/.test(value)) return "zh-CN";
+  if (/cantonese|粤语|廣東話/.test(value)) return "zh-HK";
+  if (/spanish|español/.test(value)) return "es-ES";
+  if (/french|français/.test(value)) return "fr-FR";
+  if (/japanese|日本語/.test(value)) return "ja-JP";
+  if (/korean|한국어/.test(value)) return "ko-KR";
+  if (/german|deutsch/.test(value)) return "de-DE";
+  return "en-US";
+};
 
 function offlineCoachReply(target, utterance, intent, responseTurn) {
   const turns = offlineCallTurns[target] || offlineCallTurns.Spanish;
@@ -1306,6 +1317,7 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
   const [callNotice, setCallNotice] = useState("");
   const [recognitionConfidence, setRecognitionConfidence] = useState(null);
   const [learnerTurns, setLearnerTurns] = useState(0);
+  const [speechMode, setSpeechMode] = useState("target");
   const prompt = coachPrompts[profile?.target] || coachPrompts.English;
   const activeScenario = socialScenario
     ? `${socialScenario.title}; speaking with ${socialScenario.relationship}; ${socialScenario.channel}; ${socialScenario.register}; challenge: ${socialScenario.pressure}; mission: ${socialScenario.mission || "complete a socially meaningful exchange"}; anchor language: ${(socialScenario.terms || []).join(", ") || "selected from the learner's response"}; technical knowledge map: ${(socialScenario.knowledgeMap || []).join(" | ") || "not applicable"}`
@@ -1343,7 +1355,7 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
     navigator.wakeLock?.request?.("screen").catch(() => {});
     speakCoach(prompt.text);
   };
-  const listen = () => {
+  const listen = (mode = speechMode) => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
       setCallNotice(
@@ -1353,10 +1365,14 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
     }
     try {
       const r = new SR();
-      r.lang = prompt.lang;
+      const configuredNativeLocale = speechLocaleFor(profile?.nativeLanguage || "");
+      const browserLocale = navigator.language || "zh-CN";
+      r.lang = mode === "native"
+        ? (configuredNativeLocale === "en-US" && browserLocale.toLowerCase().startsWith("zh") ? browserLocale : configuredNativeLocale)
+        : prompt.lang;
       r.onstart = () => {
         setListening(true);
-        setCallNotice("Listening…");
+        setCallNotice(mode === "native" ? `正在用${profile?.nativeLanguage || "中文"}识别你的求助…` : `Listening in ${profile?.target || "the target language"}…`);
       };
       r.onend = () => setListening(false);
       r.onerror = () => {
@@ -1371,9 +1387,9 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
         setRecognitionConfidence(
           Number.isFinite(result.confidence) ? result.confidence : null,
         );
-        setCallNotice(
-          "I captured your words. Check the transcript, then send it for coaching.",
-        );
+        setCallNotice(mode === "native"
+          ? "已识别母语内容。发送后，Luma 会先理解你的意思，再教你怎样用目标语言表达。"
+          : "I captured your words. Check the transcript, then send it for coaching.");
       };
       r.start();
     } catch {
@@ -1384,6 +1400,7 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
     }
   };
   const respond = async (intent = "respond") => {
+    if (intent === "respond" && (/[㐀-鿿]/.test(spoken) || speechMode === "native")) intent = "bridge";
     const isAnswer = intent === "respond";
     const usesComposer = isAnswer || intent === "bridge";
     if (usesComposer && !spoken.trim()) {
@@ -1394,8 +1411,8 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
       return;
     }
     const helpLabels = {
-      clarify: "I didn’t understand. Please explain and ask me again.",
-      vocabulary: "Explain the important words in your last sentence.",
+      clarify: `I did not understand this exact sentence: “${messages.at(-1)?.text || prompt.text}”. Explain its complete meaning in ${profile?.nativeLanguage || "my strongest language"}, break it into short parts, then ask a different and simpler question. Do not merely repeat it.`,
+      vocabulary: `Explain the important words in this exact sentence: “${messages.at(-1)?.text || prompt.text}”.`,
     };
     const learnerText = usesComposer ? spoken.trim() : helpLabels[intent];
     const nextHistory = [
@@ -1633,15 +1650,14 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
           </p>
         )}
         <div className="callcomposer">
-          <button
-            type="button"
-            className={"mic compactmic " + (listening ? "active" : "")}
-            onClick={listen}
-            aria-label={`Speak in ${profile?.target || "Spanish"}`}
-          >
-            <Mic />
-            <span>{listening ? "Listening…" : "Speak"}</span>
-          </button>
+          <div className="dualmic">
+            <button type="button" className={"mic compactmic " + (listening && speechMode === "target" ? "active" : "")} onClick={() => { setSpeechMode("target"); listen("target"); }} aria-label={`Speak in ${profile?.target || "Spanish"}`}>
+              <Mic /><span>{listening && speechMode === "target" ? "Listening…" : profile?.target || "Speak"}</span>
+            </button>
+            <button type="button" className={"nativemic " + (listening && speechMode === "native" ? "active" : "")} onClick={() => { setSpeechMode("native"); listen("native"); }} aria-label={`用${profile?.nativeLanguage || "中文"}求助`}>
+              <Globe2 /><span>母语求助</span>
+            </button>
+          </div>
           <textarea
             ref={answerRef}
             value={spoken}
