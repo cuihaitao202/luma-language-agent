@@ -387,6 +387,39 @@ const lookupApiUrl = () =>
   location.hostname.endsWith("github.io")
     ? `${hostedCoachOrigin}/api/lookup`
     : new URL(`${import.meta.env.BASE_URL}api/lookup`, location.origin).href;
+const learnerApiUrl = () =>
+  location.hostname.endsWith("github.io")
+    ? `${hostedCoachOrigin}/api/learner`
+    : new URL(`${import.meta.env.BASE_URL}api/learner`, location.origin).href;
+const cloudIdentity = (enabled = false) => {
+  if (!enabled) return null;
+  let learnerId = localStorage.getItem("luma-cloud-learner-id");
+  let secret = localStorage.getItem("luma-cloud-secret");
+  if (!learnerId) {
+    learnerId = crypto.randomUUID();
+    localStorage.setItem("luma-cloud-learner-id", learnerId);
+  }
+  if (!secret) {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    secret = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem("luma-cloud-secret", secret);
+  }
+  return { cloudLearnerId: learnerId, cloudSecret: secret };
+};
+const syncCloudLearning = async (profile, learnerModel, evidence) => {
+  const identity = cloudIdentity(profile?.cloudLearning === true);
+  if (!identity) return null;
+  const response = await fetch(learnerApiUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...identity, profile, learnerModel, evidence }),
+  });
+  if (!response.ok) throw new Error("Cloud learning sync failed");
+  const result = await response.json();
+  localStorage.setItem("luma-cloud-prep", JSON.stringify(result.prep || {}));
+  return result;
+};
+const coachCloudPayload = (profile) => cloudIdentity(profile?.cloudLearning === true) || {};
 const speechLocaleFor = (language = "") => {
   const value = language.toLocaleLowerCase();
   if (/mandarin|chinese|中文|普通话|汉语/.test(value)) return "zh-CN";
@@ -685,6 +718,7 @@ function App() {
           },
         };
         localStorage.setItem("luma-learner-model", JSON.stringify(next));
+        syncCloudLearning(p, next).catch(() => {});
         return next;
       })(),
     }));
@@ -693,8 +727,27 @@ function App() {
     setLearnerModel((current) => {
       const next = recordEvidence(current || createLearnerModel(profile || {}), evidence);
       localStorage.setItem("luma-learner-model", JSON.stringify(next));
+      syncCloudLearning(profile, next, evidence).catch(() => {});
       return next;
     });
+  };
+  const forgetCloudLearning = async () => {
+    const identity = cloudIdentity(profile?.cloudLearning === true);
+    if (identity) {
+      await fetch(learnerApiUrl(), {
+        method: "DELETE",
+        headers: {
+          "X-Luma-Learner": identity.cloudLearnerId,
+          "X-Luma-Secret": identity.cloudSecret,
+        },
+      }).catch(() => {});
+    }
+    localStorage.removeItem("luma-cloud-learner-id");
+    localStorage.removeItem("luma-cloud-secret");
+    localStorage.removeItem("luma-cloud-prep");
+    const nextProfile = { ...profile, cloudLearning: false };
+    localStorage.setItem("luma-profile", JSON.stringify(nextProfile));
+    setProfile(nextProfile);
   };
   const saveCallSettings = (s) => {
     localStorage.setItem("luma-call-settings", JSON.stringify(s));
@@ -797,6 +850,7 @@ function App() {
           setSocialScenario(scenario);
           setIncomingCall(true);
         }}
+        forgetCloudLearning={forgetCloudLearning}
       />
       {showOnboarding && <Onboarding initial={profile} save={saveProfile} />}{" "}
       {showCallSetup && (
@@ -838,6 +892,7 @@ function Onboarding({ initial, save }) {
   const [nativeLanguage, setNativeLanguage] = useState(
     initial?.nativeLanguage || "English",
   );
+  const [cloudLearning, setCloudLearning] = useState(initial?.cloudLearning === true);
   return (
     <div className="modalback">
       <section className="onboarding">
@@ -941,16 +996,20 @@ function Onboarding({ initial, save }) {
           onChange={(event) => setDifficultMoment(event.target.value)}
           placeholder="e.g. fast talks, writing precisely, answering questions"
         />
-        <div className="privacy">
+        <label className="privacy">
+          <input
+            type="checkbox"
+            checked={cloudLearning}
+            onChange={(event) => setCloudLearning(event.target.checked)}
+          />
           <ShieldCheck />
           <span>
-            <b>Your voice stays yours</b>
+            <b>Cloud learning memory</b>
             <small>
-              Only your transcript is used for feedback. Reset local memory
-              anytime.
+              Save structured progress and teaching outcomes so Luma can prepare the next lesson and improve its methods. No raw audio; delete anytime.
             </small>
           </span>
-        </div>
+        </label>
         <button
           type="button"
           className="primary full"
@@ -964,6 +1023,7 @@ function Onboarding({ initial, save }) {
               domain: domain.trim(),
               difficultMoment: difficultMoment.trim(),
               localeProfile,
+              cloudLearning,
             })
           }
         >
@@ -986,6 +1046,7 @@ function Home({
   answerCall,
   learnerModel,
   startSocial,
+  forgetCloudLearning,
 }) {
   const action = nextBestAction(learnerModel);
   return (
@@ -1062,7 +1123,12 @@ function Home({
           <h2>{action.mode === "transfer-retrieval" ? "A memory is ready to become usable." : `Luma needs one piece of ${action.skill} evidence.`}</h2>
           <p>{action.reason} The task uses your world: {profile?.domain || "daily life"}.</p>
         </div>
-        <span className="adaptivetag">ADAPTS AFTER EVERY RESPONSE</span>
+        <div>
+          <span className="adaptivetag">{profile?.cloudLearning ? "CLOUD MEMORY ON" : "DEVICE MEMORY ONLY"}</span>
+          {profile?.cloudLearning && (
+            <button className="textbtn" onClick={forgetCloudLearning}>Delete cloud learning data</button>
+          )}
+        </div>
       </section>
       <section className="callstrip">
         <div>
@@ -1436,6 +1502,8 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
           turn: learnerTurns,
           history: nextHistory.slice(-8),
           learnerModel: learnerSnapshot(learnerModel),
+          transfer: learnerTurns > 0,
+          ...coachCloudPayload(profile),
         }),
       });
       if (!r.ok) throw new Error();
@@ -1752,6 +1820,7 @@ function Lesson({
           utterance: spoken,
           nativeLanguage: profile?.nativeLanguage || "English",
           learnerModel: learnerSnapshot(learnerModel),
+          ...coachCloudPayload(profile),
         }),
       });
       if (!r.ok) throw new Error("demo");
