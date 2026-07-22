@@ -319,7 +319,7 @@ async function realtimeSession(request, env) {
         required: ["skill", "score", "hesitation", "transfer", "phrase", "context", "nextMove", "hints", "technique"],
       },
     }];
-  const baseUrl = String(env.OPENAI_BASE_URL || "https://api.aimodelapi.ai/v1").replace(/\/$/, "");
+  const baseUrl = String(env.OPENAI_REALTIME_BASE_URL || env.OPENAI_BASE_URL || "https://sg.api.aimodelapi.ai/v1").replace(/\/$/, "");
   const response = await fetch(`${baseUrl}/realtime/tickets`, {
     method: "POST",
     headers: {
