@@ -53,6 +53,12 @@ Onboarding captures the learner's real professional domain and current point of 
 
 The implementation is deliberately honest about its limits: transcript confidence is not phoneme analysis, retention is estimated rather than measured directly, and the model must revise itself from observed performance. Run `npm test` to verify learner-model updating, stability growth, and due-memory selection.
 
+### Cloud learning memory and teaching iteration
+
+Learners can explicitly enable cloud learning memory during onboarding. Luma then stores a privacy-minimized learner model and structured learning events in D1: skill, outcome score, hesitation, transfer, teaching strategy, bounded context, and a one-way hash of the memory key. Raw audio is never stored, and full conversation transcripts are not retained as training records. An anonymous learner credential kept on the device controls access; the learner can delete the cloud profile and its events from the home screen.
+
+After every sync, the service creates a pre-class brief from the weakest evidenced skill, memories due for retrieval, and recent hesitation. The next coaching request uses this brief as a provisional teaching hypothesis. Aggregate strategy outcomes record attempts, successful responses, and successful transfer, allowing teaching policies to be evaluated before their priority is changed. This is auditable strategy adaptation—not autonomous model-weight training or an unsupported claim that the model rewrites itself.
+
 ## Social immersion and living language
 
 The Social Immersion Lab varies relationship, locale, channel, register, conversational pressure, and listener reaction—not merely the background story. Initial scenarios cover coworker lunch, a friends' group chat, a house party, a community meetup, team chat, and a conference reception. The coach trains interactional moves such as entering a group, handling interruption, repairing misunderstanding, soft disagreement, reading a hesitant reaction, and leaving naturally.

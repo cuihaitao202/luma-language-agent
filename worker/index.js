@@ -70,10 +70,124 @@ function corsHeaders(request) {
     "Access-Control-Allow-Origin": allowedOrigins.has(origin)
       ? origin
       : "https://cuihaitao202.github.io",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Luma-Learner, X-Luma-Secret",
     Vary: "Origin",
   };
+}
+
+const CONSENT_VERSION = "cloud-learning-v1";
+const boundedJson = (value, max = 48000) => JSON.stringify(value || {}).slice(0, max);
+const safeJson = (value, fallback = {}) => {
+  try { return JSON.parse(value || "{}"); } catch { return fallback; }
+};
+const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+async function sha256(value) {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function ensureLearningSchema(env) {
+  if (!env.DB) return false;
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS learners (learner_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, consent_version TEXT NOT NULL, profile_json TEXT NOT NULL DEFAULT '{}', model_json TEXT NOT NULL DEFAULT '{}', prep_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS learning_events (event_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, event_type TEXT NOT NULL, skill TEXT, score REAL, hesitation REAL, transfer INTEGER NOT NULL DEFAULT 0, strategy TEXT, context TEXT, memory_key_hash TEXT, created_at INTEGER NOT NULL, FOREIGN KEY (learner_id) REFERENCES learners(learner_id) ON DELETE CASCADE)`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS learning_events_learner_time_idx ON learning_events (learner_id, created_at DESC)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS strategy_outcomes (strategy TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0, successes INTEGER NOT NULL DEFAULT 0, transfer_successes INTEGER NOT NULL DEFAULT 0, mean_score REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
+  ]);
+  return true;
+}
+
+function cloudCredentials(request, body = {}) {
+  return {
+    learnerId: String(request.headers.get("X-Luma-Learner") || body.cloudLearnerId || "").slice(0, 80),
+    secret: String(request.headers.get("X-Luma-Secret") || body.cloudSecret || "").slice(0, 160),
+  };
+}
+
+async function authorizeLearner(request, env, body = {}, { create = false } = {}) {
+  if (!await ensureLearningSchema(env)) return { error: "Cloud learning storage is not configured.", status: 503 };
+  const { learnerId, secret } = cloudCredentials(request, body);
+  if (!learnerId || secret.length < 24) return { error: "Cloud learner credentials are required.", status: 401 };
+  const secretHash = await sha256(secret);
+  const existing = await env.DB.prepare("SELECT * FROM learners WHERE learner_id = ?").bind(learnerId).first();
+  if (!existing && create) {
+    const now = Date.now();
+    await env.DB.prepare("INSERT INTO learners (learner_id, secret_hash, consent_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(learnerId, secretHash, CONSENT_VERSION, now, now).run();
+    return { learner: { learner_id: learnerId, profile_json: "{}", model_json: "{}", prep_json: "{}" } };
+  }
+  if (!existing || existing.secret_hash !== secretHash) return { error: "Cloud learner credentials are invalid.", status: 403 };
+  return { learner: existing };
+}
+
+function buildPrep(model, recentEvents = []) {
+  const skills = model?.skills || {};
+  const weakest = Object.entries(skills).sort((a, b) => finite(a[1]?.estimate, 1) - finite(b[1]?.estimate, 1))[0]?.[0] || "speaking";
+  const memories = Object.values(model?.memories || {});
+  const due = memories.filter((memory) => finite(memory.nextDueAt, Infinity) <= Date.now()).slice(0, 5);
+  const hesitation = recentEvents.length
+    ? recentEvents.reduce((sum, event) => sum + finite(event.hesitation), 0) / recentEvents.length
+    : 0;
+  return {
+    generatedAt: Date.now(),
+    weakestSkill: weakest,
+    dueMemoryKeys: due.map((memory) => String(memory.key || "").slice(0, 120)),
+    recentAverageHesitation: Math.round(hesitation * 100) / 100,
+    teachingPlan: hesitation > 0.35
+      ? "Reduce initial support, shorten the first production demand, then require an unaided retry."
+      : `Start with meaningful ${weakest} evidence, retrieve one due memory, then test it in a changed context.`,
+  };
+}
+
+async function saveCloudEvidence(env, learnerId, evidence = {}) {
+  if (!env.DB || !learnerId) return;
+  const score = Math.max(0, Math.min(1, finite(evidence.score, 0.5)));
+  const hesitation = Math.max(0, Math.min(1, finite(evidence.hesitation, 0)));
+  const strategy = String(evidence.strategy || "focused-recast").slice(0, 80);
+  const memoryHash = evidence.memoryKey ? await sha256(evidence.memoryKey) : null;
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO learning_events (event_id, learner_id, event_type, skill, score, hesitation, transfer, strategy, context, memory_key_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), learnerId, String(evidence.type || "practice-turn").slice(0, 40), String(evidence.skill || "speaking").slice(0, 20), score, hesitation, evidence.transfer ? 1 : 0, strategy, String(evidence.context || "").slice(0, 160), memoryHash, now),
+    env.DB.prepare(`INSERT INTO strategy_outcomes (strategy, attempts, successes, transfer_successes, mean_score, updated_at) VALUES (?, 1, ?, ?, ?, ?)
+      ON CONFLICT(strategy) DO UPDATE SET attempts = attempts + 1, successes = successes + excluded.successes, transfer_successes = transfer_successes + excluded.transfer_successes, mean_score = ((mean_score * attempts) + excluded.mean_score) / (attempts + 1), updated_at = excluded.updated_at`)
+      .bind(strategy, score >= 0.7 ? 1 : 0, evidence.transfer && score >= 0.7 ? 1 : 0, score, now),
+  ]);
+}
+
+async function cloudLearner(request, env) {
+  const body = request.method === "POST" ? await request.json() : {};
+  const auth = await authorizeLearner(request, env, body, { create: request.method === "POST" });
+  if (auth.error) return json(request, { error: auth.error }, auth.status);
+  if (request.method === "GET") {
+    return json(request, {
+      profile: safeJson(auth.learner.profile_json),
+      learnerModel: safeJson(auth.learner.model_json),
+      prep: safeJson(auth.learner.prep_json),
+      updatedAt: auth.learner.updated_at,
+    });
+  }
+  const model = body.learnerModel && typeof body.learnerModel === "object" ? body.learnerModel : {};
+  const recent = await env.DB.prepare("SELECT skill, score, hesitation, transfer, strategy, created_at FROM learning_events WHERE learner_id = ? ORDER BY created_at DESC LIMIT 20")
+    .bind(auth.learner.learner_id).all();
+  const prep = buildPrep(model, recent.results || []);
+  await env.DB.prepare("UPDATE learners SET profile_json = ?, model_json = ?, prep_json = ?, consent_version = ?, updated_at = ? WHERE learner_id = ?")
+    .bind(boundedJson(body.profile, 12000), boundedJson(model), boundedJson(prep, 12000), CONSENT_VERSION, Date.now(), auth.learner.learner_id).run();
+  if (body.evidence) await saveCloudEvidence(env, auth.learner.learner_id, body.evidence);
+  return json(request, { saved: true, prep, consentVersion: CONSENT_VERSION });
+}
+
+async function deleteCloudLearner(request, env) {
+  const auth = await authorizeLearner(request, env);
+  if (auth.error) return json(request, { error: auth.error }, auth.status);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM learning_events WHERE learner_id = ?").bind(auth.learner.learner_id),
+    env.DB.prepare("DELETE FROM learners WHERE learner_id = ?").bind(auth.learner.learner_id),
+  ]);
+  return json(request, { deleted: true });
 }
 
 function json(request, data, status = 200) {
@@ -136,6 +250,15 @@ async function coach(request, env) {
   if (!env.OPENAI_API_KEY)
     return json(request, { demo: true, error: "Live coaching is not configured." }, 503);
   const body = await request.json();
+  let cloudPrep = null;
+  let cloudLearnerId = null;
+  if (body.cloudLearnerId && body.cloudSecret) {
+    const cloudAuth = await authorizeLearner(request, env, body);
+    if (!cloudAuth.error) {
+      cloudLearnerId = cloudAuth.learner.learner_id;
+      cloudPrep = safeJson(cloudAuth.learner.prep_json, null);
+    }
+  }
   const target = String(body.targetLanguage || "Spanish").slice(0, 40);
   const nativeLanguage = String(body.nativeLanguage || "English").slice(0, 40);
   const scenario = String(body.scenario || "a daily real-life conversation").slice(0, 180);
@@ -167,7 +290,7 @@ async function coach(request, env) {
   };
   const requestedModel = env.OPENAI_MODEL || "gpt-5.6-terra";
   const previousCoachSentence = [...history].reverse().find((message) => message.role === "assistant")?.content || "not available";
-  const learnerContext = `Scenario: ${scenario}\nIntent: ${intent}\nPrevious coach sentence that may need explanation: ${previousCoachSentence}\nSpeech-recognition confidence: ${Number.isFinite(confidence) ? confidence : "not available"}\nLearner model: ${learnerModel}\nSocial context: ${JSON.stringify(socialContext)}\nVerified language pulse: ${pulseContext}\nLatest learner message: ${utterance}\nUse the learner model only as a provisional hypothesis. Keep the task meaningful, tune support to observed hesitation, retrieve previously learned language when relevant, and vary the context to test transfer. For rare professional language, teach a reusable phrase or collocation in its authentic rhetorical function—not an isolated definition. In AI and AR technical contexts, cycle through: infer the term from a paper-like sentence; give a precise plain-language explanation; notice its common collocations and contrast terms; ask the learner to explain the mechanism aloud; challenge one causal claim or trade-off; later retrieve it in a design review, paper Q&A, or written abstract. Distinguish an established technical term from a newly coined paper term, and never invent a paper citation. Simulate the relationship, channel, power distance, pace, and listener reaction turn by turn. Teach pragmatic moves such as entering a group, soft disagreement, repair, humor, and exiting naturally. For colloquialisms, abbreviations, or internet language, state the locale, relationship/channel fit, and whether the learner should actively use it or only recognize it. Treat language as current only when supported by the verified pulse above.`;
+  const learnerContext = `Scenario: ${scenario}\nIntent: ${intent}\nPrevious coach sentence that may need explanation: ${previousCoachSentence}\nSpeech-recognition confidence: ${Number.isFinite(confidence) ? confidence : "not available"}\nLearner model: ${learnerModel}\nCloud pre-class brief: ${cloudPrep ? boundedJson(cloudPrep, 2400) : "not available"}\nSocial context: ${JSON.stringify(socialContext)}\nVerified language pulse: ${pulseContext}\nLatest learner message: ${utterance}\nUse the learner model and pre-class brief only as provisional hypotheses. Keep the task meaningful, tune support to observed hesitation, retrieve previously learned language when relevant, and vary the context to test transfer. For rare professional language, teach a reusable phrase or collocation in its authentic rhetorical function—not an isolated definition. In AI and AR technical contexts, cycle through: infer the term from a paper-like sentence; give a precise plain-language explanation; notice its common collocations and contrast terms; ask the learner to explain the mechanism aloud; challenge one causal claim or trade-off; later retrieve it in a design review, paper Q&A, or written abstract. Distinguish an established technical term from a newly coined paper term, and never invent a paper citation. Simulate the relationship, channel, power distance, pace, and listener reaction turn by turn. Teach pragmatic moves such as entering a group, soft disagreement, repair, humor, and exiting naturally. For colloquialisms, abbreviations, or internet language, state the locale, relationship/channel fit, and whether the learner should actively use it or only recognize it. Treat language as current only when supported by the verified pulse above.`;
 
   let apiResponse = await fetch(`${baseUrl}/responses`, {
     method: "POST",
@@ -226,6 +349,18 @@ async function coach(request, env) {
     return json(request, { error: "AI coaching request failed." }, 502);
 
   const result = parseModelJson(outputText);
+  if (cloudLearnerId) {
+    await saveCloudEvidence(env, cloudLearnerId, {
+      type: "coach-turn",
+      skill: "speaking",
+      score: result.understood ? 0.78 : 0.38,
+      hesitation: Number.isFinite(confidence) ? 1 - confidence : 0.2,
+      transfer: Boolean(body.transfer),
+      strategy: "focused-recast",
+      context: scenario,
+      memoryKey: result.naturalVersion,
+    });
+  }
   return json(request, {
     ...result,
     _meta: {
@@ -285,7 +420,22 @@ export default {
         configuredModel: env.OPENAI_MODEL || "gpt-5.6-terra",
         apiStrategy: "responses_with_chat_completions_fallback",
         coachingMode: "multi_turn_interactive",
+        cloudLearning: Boolean(env.DB),
       });
+    if (url.pathname === "/api/learner" && ["GET", "POST"].includes(request.method)) {
+      try {
+        return await cloudLearner(request, env);
+      } catch (error) {
+        return json(request, { error: "Cloud learning unavailable.", detail: String(error?.message || error) }, 500);
+      }
+    }
+    if (url.pathname === "/api/learner" && request.method === "DELETE") {
+      try {
+        return await deleteCloudLearner(request, env);
+      } catch (error) {
+        return json(request, { error: "Cloud learning deletion failed.", detail: String(error?.message || error) }, 500);
+      }
+    }
     if (url.pathname === "/api/coach" && request.method === "POST") {
       try {
         return await coach(request, env);

@@ -1,4 +1,4 @@
-import {copyFile,mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
+import {copyFile,cp,mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
 import {extname,join,relative,resolve} from 'node:path';
 
 const root=resolve(import.meta.dirname,'..');
@@ -63,3 +63,4 @@ await writeFile(join(serverDir,'index.js'),embedded+source);
 const hostingDir=join(dist,'.openai');
 await mkdir(hostingDir,{recursive:true});
 await copyFile(join(root,'.openai','hosting.json'),join(hostingDir,'hosting.json'));
+await cp(join(root,'.openai','drizzle'),join(hostingDir,'drizzle'),{recursive:true});
