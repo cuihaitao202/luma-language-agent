@@ -55,9 +55,13 @@ The implementation is deliberately honest about its limits: transcript confidenc
 
 ### Cloud learning memory and teaching iteration
 
-Learners can explicitly enable cloud learning memory during onboarding. Luma then stores a privacy-minimized learner model and structured learning events in D1: skill, outcome score, hesitation, transfer, teaching strategy, bounded context, and a one-way hash of the memory key. Raw audio is never stored, and full conversation transcripts are not retained as training records. An anonymous learner credential kept on the device controls access; the learner can delete the cloud profile and its events from the home screen.
+Learners can explicitly enable cloud learning memory during onboarding. Luma then stores a privacy-minimized learner model and structured learning events in D1: skill, outcome score, hesitation, transfer, teaching strategy, bounded context, and a one-way hash of the memory key. Under this progress-only consent, conversation transcripts are not retained. An anonymous learner credential kept on the device controls access; the learner can delete the cloud profile and its events from the home screen.
+
+Conversation corpus consent is separate. When explicitly enabled, bounded learner and coach text, scenario, target language, and teaching outcome are retained for progress analysis and teaching-method research. Turning corpus consent off deletes those conversation records without deleting the learner's structured progress; deleting cloud learning removes both. Raw audio is never part of the corpus.
 
 After every sync, the service creates a pre-class brief from the weakest evidenced skill, memories due for retrieval, and recent hesitation. The next coaching request uses this brief as a provisional teaching hypothesis. Aggregate strategy outcomes record attempts, successful responses, and successful transfer, allowing teaching policies to be evaluated before their priority is changed. This is auditable strategy adaptation—not autonomous model-weight training or an unsupported claim that the model rewrites itself.
+
+The Worker also supports inactive-time preparation. A scheduled handler—and opportunistic background work when the service receives traffic—rebuilds briefs for learners inactive for at least two hours. It avoids recently used scenarios, rotates lesson formats such as role reversal and skeptical interview, and selects a teaching strategy from measured transfer outcomes. Deployments should attach the scheduled handler to a nightly trigger for guaranteed wall-clock execution; without that trigger, inactive preparation runs opportunistically on subsequent service traffic.
 
 ## Social immersion and living language
 

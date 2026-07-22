@@ -77,6 +77,7 @@ function corsHeaders(request) {
 }
 
 const CONSENT_VERSION = "cloud-learning-v1";
+const CORPUS_CONSENT_VERSION = "conversation-corpus-v1";
 const boundedJson = (value, max = 48000) => JSON.stringify(value || {}).slice(0, max);
 const safeJson = (value, fallback = {}) => {
   try { return JSON.parse(value || "{}"); } catch { return fallback; }
@@ -92,11 +93,21 @@ async function sha256(value) {
 async function ensureLearningSchema(env) {
   if (!env.DB) return false;
   await env.DB.batch([
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS learners (learner_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, consent_version TEXT NOT NULL, profile_json TEXT NOT NULL DEFAULT '{}', model_json TEXT NOT NULL DEFAULT '{}', prep_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS learners (learner_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, consent_version TEXT NOT NULL, profile_json TEXT NOT NULL DEFAULT '{}', model_json TEXT NOT NULL DEFAULT '{}', prep_json TEXT NOT NULL DEFAULT '{}', corpus_consent INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS learning_events (event_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, event_type TEXT NOT NULL, skill TEXT, score REAL, hesitation REAL, transfer INTEGER NOT NULL DEFAULT 0, strategy TEXT, context TEXT, memory_key_hash TEXT, created_at INTEGER NOT NULL, FOREIGN KEY (learner_id) REFERENCES learners(learner_id) ON DELETE CASCADE)`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS learning_events_learner_time_idx ON learning_events (learner_id, created_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS strategy_outcomes (strategy TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0, successes INTEGER NOT NULL DEFAULT 0, transfer_successes INTEGER NOT NULL DEFAULT 0, mean_score REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS conversation_corpus (corpus_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, session_id TEXT NOT NULL, learner_text TEXT NOT NULL, coach_text TEXT NOT NULL, target_language TEXT, scenario TEXT, outcome_json TEXT NOT NULL DEFAULT '{}', consent_version TEXT NOT NULL, created_at INTEGER NOT NULL, FOREIGN KEY (learner_id) REFERENCES learners(learner_id) ON DELETE CASCADE)`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS conversation_corpus_learner_time_idx ON conversation_corpus (learner_id, created_at DESC)`),
   ]);
+  for (const statement of [
+    "ALTER TABLE learners ADD COLUMN corpus_consent INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE learners ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    try { await env.DB.prepare(statement).run(); } catch (error) {
+      if (!String(error?.message || error).toLowerCase().includes("duplicate column")) throw error;
+    }
+  }
   return true;
 }
 
@@ -123,7 +134,7 @@ async function authorizeLearner(request, env, body = {}, { create = false } = {}
   return { learner: existing };
 }
 
-function buildPrep(model, recentEvents = []) {
+function buildPrep(model, recentEvents = [], insights = {}) {
   const skills = model?.skills || {};
   const weakest = Object.entries(skills).sort((a, b) => finite(a[1]?.estimate, 1) - finite(b[1]?.estimate, 1))[0]?.[0] || "speaking";
   const memories = Object.values(model?.memories || {});
@@ -131,15 +142,55 @@ function buildPrep(model, recentEvents = []) {
   const hesitation = recentEvents.length
     ? recentEvents.reduce((sum, event) => sum + finite(event.hesitation), 0) / recentEvents.length
     : 0;
+  const recentStrategies = recentEvents.map((event) => event.strategy).filter(Boolean);
+  const lessonFormats = ["role-reversal", "skeptical-interview", "story-reconstruction", "design-review", "teach-it-back"];
+  const format = lessonFormats.find((candidate) => !recentStrategies.includes(candidate)) || lessonFormats[Date.now() % lessonFormats.length];
   return {
     generatedAt: Date.now(),
     weakestSkill: weakest,
     dueMemoryKeys: due.map((memory) => String(memory.key || "").slice(0, 120)),
     recentAverageHesitation: Math.round(hesitation * 100) / 100,
+    lessonFormat: format,
+    avoidRecentScenarios: (insights.recentScenarios || []).slice(0, 5),
+    recommendedStrategy: insights.recommendedStrategy || "focused-recast",
+    noveltyRule: "Do not repeat the last scenario; preserve the language function while changing role, stakes, and channel.",
     teachingPlan: hesitation > 0.35
       ? "Reduce initial support, shorten the first production demand, then require an unaided retry."
       : `Start with meaningful ${weakest} evidence, retrieve one due memory, then test it in a changed context.`,
   };
+}
+
+async function saveConsentedCorpus(env, learnerId, body, result) {
+  if (!env.DB || !learnerId) return;
+  const learner = await env.DB.prepare("SELECT corpus_consent FROM learners WHERE learner_id = ?").bind(learnerId).first();
+  if (!learner || Number(learner.corpus_consent) !== 1) return;
+  await env.DB.prepare("INSERT INTO conversation_corpus (corpus_id, learner_id, session_id, learner_text, coach_text, target_language, scenario, outcome_json, consent_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(
+      crypto.randomUUID(), learnerId, String(body.sessionId || "unspecified").slice(0, 100),
+      String(body.utterance || "").slice(0, 2000), String(result.reply || "").slice(0, 2000),
+      String(body.targetLanguage || "").slice(0, 40), String(body.scenario || "").slice(0, 240),
+      boundedJson({ understood: result.understood, correction: result.grammarCorrection, naturalVersion: result.naturalVersion }, 3000),
+      CORPUS_CONSENT_VERSION, Date.now(),
+    ).run();
+}
+
+async function prepareInactiveLearners(env, inactiveBefore = Date.now() - 2 * 36e5) {
+  if (!await ensureLearningSchema(env)) return 0;
+  const learners = await env.DB.prepare("SELECT learner_id, model_json FROM learners WHERE last_active_at > 0 AND last_active_at <= ? ORDER BY last_active_at ASC LIMIT 100").bind(inactiveBefore).all();
+  for (const learner of learners.results || []) {
+    const recent = await env.DB.prepare("SELECT skill, score, hesitation, transfer, strategy, created_at FROM learning_events WHERE learner_id = ? ORDER BY created_at DESC LIMIT 20").bind(learner.learner_id).all();
+    const corpus = await env.DB.prepare("SELECT scenario FROM conversation_corpus WHERE learner_id = ? ORDER BY created_at DESC LIMIT 5").bind(learner.learner_id).all();
+    const bestStrategy = await env.DB.prepare("SELECT strategy FROM strategy_outcomes WHERE attempts >= 3 ORDER BY (transfer_successes * 1.0 / attempts) DESC, mean_score DESC LIMIT 1").first();
+    const prep = {
+      ...buildPrep(safeJson(learner.model_json), recent.results || [], {
+        recentScenarios: (corpus.results || []).map((row) => row.scenario).filter(Boolean),
+        recommendedStrategy: bestStrategy?.strategy,
+      }),
+      preparedWhileInactive: true,
+    };
+    await env.DB.prepare("UPDATE learners SET prep_json = ?, updated_at = ? WHERE learner_id = ?").bind(boundedJson(prep, 12000), Date.now(), learner.learner_id).run();
+  }
+  return learners.results?.length || 0;
 }
 
 async function saveCloudEvidence(env, learnerId, evidence = {}) {
@@ -174,8 +225,10 @@ async function cloudLearner(request, env) {
   const recent = await env.DB.prepare("SELECT skill, score, hesitation, transfer, strategy, created_at FROM learning_events WHERE learner_id = ? ORDER BY created_at DESC LIMIT 20")
     .bind(auth.learner.learner_id).all();
   const prep = buildPrep(model, recent.results || []);
-  await env.DB.prepare("UPDATE learners SET profile_json = ?, model_json = ?, prep_json = ?, consent_version = ?, updated_at = ? WHERE learner_id = ?")
-    .bind(boundedJson(body.profile, 12000), boundedJson(model), boundedJson(prep, 12000), CONSENT_VERSION, Date.now(), auth.learner.learner_id).run();
+  const corpusConsent = body.profile?.corpusConsent === true ? 1 : 0;
+  await env.DB.prepare("UPDATE learners SET profile_json = ?, model_json = ?, prep_json = ?, corpus_consent = ?, last_active_at = ?, consent_version = ?, updated_at = ? WHERE learner_id = ?")
+    .bind(boundedJson(body.profile, 12000), boundedJson(model), boundedJson(prep, 12000), corpusConsent, Date.now(), CONSENT_VERSION, Date.now(), auth.learner.learner_id).run();
+  if (!corpusConsent) await env.DB.prepare("DELETE FROM conversation_corpus WHERE learner_id = ?").bind(auth.learner.learner_id).run();
   if (body.evidence) await saveCloudEvidence(env, auth.learner.learner_id, body.evidence);
   return json(request, { saved: true, prep, consentVersion: CONSENT_VERSION });
 }
@@ -184,6 +237,7 @@ async function deleteCloudLearner(request, env) {
   const auth = await authorizeLearner(request, env);
   if (auth.error) return json(request, { error: auth.error }, auth.status);
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM conversation_corpus WHERE learner_id = ?").bind(auth.learner.learner_id),
     env.DB.prepare("DELETE FROM learning_events WHERE learner_id = ?").bind(auth.learner.learner_id),
     env.DB.prepare("DELETE FROM learners WHERE learner_id = ?").bind(auth.learner.learner_id),
   ]);
@@ -360,6 +414,9 @@ async function coach(request, env) {
       context: scenario,
       memoryKey: result.naturalVersion,
     });
+    await saveConsentedCorpus(env, cloudLearnerId, body, result);
+    await env.DB.prepare("UPDATE learners SET last_active_at = ?, updated_at = ? WHERE learner_id = ?")
+      .bind(Date.now(), Date.now(), cloudLearnerId).run();
   }
   return json(request, {
     ...result,
@@ -409,8 +466,11 @@ async function contextualLookup(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (env.DB && ctx?.waitUntil) {
+      ctx.waitUntil(prepareInactiveLearners(env).catch(() => 0));
+    }
     if (request.method === "OPTIONS")
       return new Response(null, { status: 204, headers: corsHeaders(request) });
     if (url.pathname === "/api/health")
@@ -455,5 +515,8 @@ export default {
       }
     }
     return env.ASSETS.fetch(request);
+  },
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(prepareInactiveLearners(env));
   },
 };

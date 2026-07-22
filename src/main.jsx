@@ -379,6 +379,7 @@ const publicCallUrl = () =>
   `${location.origin}${location.pathname}?coachCall=1`;
 const hostedCoachOrigin =
   "https://luma-language-agent.taotao918918918.chatgpt.site";
+const practiceSessionId = crypto.randomUUID();
 const coachApiUrl = () =>
   location.hostname.endsWith("github.io")
     ? `${hostedCoachOrigin}/api/coach`
@@ -893,6 +894,7 @@ function Onboarding({ initial, save }) {
     initial?.nativeLanguage || "English",
   );
   const [cloudLearning, setCloudLearning] = useState(initial?.cloudLearning === true);
+  const [corpusConsent, setCorpusConsent] = useState(initial?.corpusConsent === true);
   return (
     <div className="modalback">
       <section className="onboarding">
@@ -1010,6 +1012,21 @@ function Onboarding({ initial, save }) {
             </small>
           </span>
         </label>
+        <label className="privacy">
+          <input
+            type="checkbox"
+            checked={cloudLearning && corpusConsent}
+            disabled={!cloudLearning}
+            onChange={(event) => setCorpusConsent(event.target.checked)}
+          />
+          <ShieldCheck />
+          <span>
+            <b>Contribute my learning conversations</b>
+            <small>
+              With separate consent, save bounded conversation text as teaching research corpus for progress analysis and future lesson design. Turning this off deletes saved corpus while keeping progress memory.
+            </small>
+          </span>
+        </label>
         <button
           type="button"
           className="primary full"
@@ -1024,6 +1041,7 @@ function Onboarding({ initial, save }) {
               difficultMoment: difficultMoment.trim(),
               localeProfile,
               cloudLearning,
+              corpusConsent: cloudLearning && corpusConsent,
             })
           }
         >
@@ -1500,6 +1518,7 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
           intent,
           recognitionConfidence,
           turn: learnerTurns,
+          sessionId: practiceSessionId,
           history: nextHistory.slice(-8),
           learnerModel: learnerSnapshot(learnerModel),
           transfer: learnerTurns > 0,
@@ -1820,6 +1839,7 @@ function Lesson({
           utterance: spoken,
           nativeLanguage: profile?.nativeLanguage || "English",
           learnerModel: learnerSnapshot(learnerModel),
+          sessionId: practiceSessionId,
           ...coachCloudPayload(profile),
         }),
       });
