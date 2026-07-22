@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { RealtimePcmAudio } from "./realtime-audio.js";
 import {
   ArrowRight,
   AudioLines,
@@ -1423,10 +1424,9 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const [learnerTranscript, setLearnerTranscript] = useState("");
   const [coachTranscript, setCoachTranscript] = useState("");
   const [turns, setTurns] = useState(0);
-  const peerRef = useRef(null);
   const streamRef = useRef(null);
   const channelRef = useRef(null);
-  const audioRef = useRef(null);
+  const pcmAudioRef = useRef(null);
   const responseEndedAtRef = useRef(null);
   const responseLatencyRef = useRef(null);
   const scenario = socialScenario
@@ -1440,15 +1440,14 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       clearInterval(timer);
       navigator.vibrate?.(0);
       channelRef.current?.close();
-      peerRef.current?.close();
+      pcmAudioRef.current?.close();
       streamRef.current?.getTracks().forEach((track) => track.stop());
-      if (audioRef.current) audioRef.current.srcObject = null;
     };
   }, []);
 
   const endCall = () => {
     channelRef.current?.close();
-    peerRef.current?.close();
+    pcmAudioRef.current?.close();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     captureEvidence?.({
       skill: "speaking",
@@ -1466,6 +1465,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
 
   const handleEvent = (event) => {
     if (event.type === "input_audio_buffer.speech_started") {
+      pcmAudioRef.current?.interrupt();
       if (responseEndedAtRef.current) responseLatencyRef.current = Date.now() - responseEndedAtRef.current;
       setStatus("You’re speaking — Luma is listening");
     } else if (event.type === "input_audio_buffer.speech_stopped") {
@@ -1482,6 +1482,20 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     } else if (event.type === "response.done") {
       responseEndedAtRef.current = Date.now();
       setStatus("Your turn — take your time, pauses are okay");
+    } else if (event.type === "response.audio.delta") {
+      pcmAudioRef.current?.play(event.delta).catch(() => {});
+    } else if (event.type === "luma.provider.connecting") {
+      setStatus(event.provider === "zhipu" ? "Switching to the backup voice service…" : "Connecting Alibaba realtime voice…");
+    } else if (event.type === "luma.provider.connected") {
+      setPhase("live");
+      setStatus(event.fallback ? "Live on backup voice service — continue speaking" : "Live — take your time, and interrupt naturally");
+    } else if (event.type === "luma.provider.failed") {
+      setStatus(`${event.provider === "bailian" ? "Alibaba" : "Backup"} voice was interrupted; reconnecting…`);
+    } else if (event.type === "luma.provider.exhausted") {
+      setPhase("error");
+      setStatus("The configured live voice services are unavailable");
+    } else if (event.type === "session.updated") {
+      channelRef.current?.send(JSON.stringify({ type: "response.create" }));
     } else if (event.type === "response.function_call_arguments.done" && event.name === "record_learning_observation") {
       try {
         const observation = JSON.parse(event.arguments || "{}");
@@ -1529,44 +1543,8 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
         },
       });
       streamRef.current = stream;
-      const peer = new RTCPeerConnection();
-      peerRef.current = peer;
-      const audio = document.createElement("audio");
-      audio.autoplay = true;
-      audio.playsInline = true;
-      audioRef.current = audio;
-      peer.ontrack = (event) => {
-        audio.srcObject = event.streams[0];
-        audio.play().catch(() => {});
-      };
-      peer.onconnectionstatechange = () => {
-        if (peer.connectionState === "connected") {
-          setPhase("live");
-          setStatus("Live — take your time, and interrupt naturally");
-        }
-        if (["failed", "disconnected"].includes(peer.connectionState)) {
-          setPhase("error");
-          setStatus("The live audio connection was interrupted");
-        }
-      };
-      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-      const channel = peer.createDataChannel("oai-events");
-      channelRef.current = channel;
-      channel.onmessage = (message) => {
-        try { handleEvent(JSON.parse(message.data)); } catch { /* ignore non-JSON events */ }
-      };
-      channel.onopen = () => {
-        channel.send(JSON.stringify({
-          type: "response.create",
-          response: {
-            instructions: "Start the phone call now. Greet the learner naturally in the target language and open an unexpected but relevant real situation. Keep it short so they can speak.",
-          },
-        }));
-      };
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
       const cloud = cloudIdentity(profile?.cloudLearning === true);
-      const headers = { "Content-Type": "application/sdp" };
+      const headers = { "Content-Type": "application/json" };
       if (cloud) {
         headers["X-Luma-Learner"] = cloud.cloudLearnerId;
         headers["X-Luma-Secret"] = cloud.cloudSecret;
@@ -1574,7 +1552,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       const response = await fetch(realtimeApiUrl(profile, scenario), {
         method: "POST",
         headers,
-        body: offer.sdp,
+        body: JSON.stringify({ client: "luma-web" }),
       });
       if (!response.ok) {
         let detail = "";
@@ -1590,11 +1568,44 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
             : `Live voice service is unavailable (${response.status})`,
         );
       }
-      await peer.setRemoteDescription({ type: "answer", sdp: await response.text() });
+      const session = await response.json();
+      if (!session?.url || !session?.instructions) throw new Error("The realtime gateway returned an incomplete session");
+      const channel = new WebSocket(session.url);
+      channelRef.current = channel;
+      const pcmAudio = new RealtimePcmAudio((audio) => {
+        if (channel.readyState === WebSocket.OPEN) {
+          channel.send(JSON.stringify({ type: "input_audio_buffer.append", audio }));
+        }
+      });
+      pcmAudioRef.current = pcmAudio;
+      channel.onmessage = (message) => {
+        try { handleEvent(JSON.parse(message.data)); } catch { /* ignore non-JSON events */ }
+      };
+      channel.onopen = async () => {
+        try {
+          await pcmAudio.start(stream);
+          channel.send(JSON.stringify({
+            type: "session.update",
+            session: { instructions: session.instructions, tools: session.tools || [] },
+          }));
+        } catch (error) {
+          setPhase("error");
+          setStatus(error?.message || "Could not start microphone streaming");
+          channel.close();
+        }
+      };
+      channel.onclose = (event) => {
+        pcmAudio.close();
+        if (event.code !== 1000) {
+          setPhase("error");
+          setStatus(event.reason || "The live audio connection was interrupted");
+        }
+      };
+      channel.onerror = () => setStatus("The realtime gateway connection was interrupted");
       navigator.wakeLock?.request?.("screen").catch(() => {});
     } catch (error) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
-      peerRef.current?.close();
+      pcmAudioRef.current?.close();
       setPhase("error");
       setStatus(error?.message || "Could not start live audio");
     }

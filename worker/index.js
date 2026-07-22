@@ -287,8 +287,7 @@ async function realtimeSession(request, env) {
   const target = String(url.searchParams.get("target") || "Spanish").slice(0, 40);
   const nativeLanguage = String(url.searchParams.get("native") || "English").slice(0, 40);
   const scenario = String(url.searchParams.get("scenario") || "a spontaneous real-life call").slice(0, 300);
-  const sdp = await request.text();
-  if (!sdp.includes("v=0")) return json(request, { error: "A valid WebRTC offer is required." }, 400);
+  const body = await request.json().catch(() => ({}));
   let prep = null;
   let safetyIdentifier = "anonymous-luma-learner";
   const credentials = cloudCredentials(request);
@@ -299,24 +298,7 @@ async function realtimeSession(request, env) {
       safetyIdentifier = await sha256(auth.learner.learner_id);
     }
   }
-  const session = {
-    type: "realtime",
-    model: env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
-    output_modalities: ["audio"],
-    instructions: realtimeInstructions({ target, nativeLanguage, scenario, prep }),
-    audio: {
-      input: {
-        transcription: { model: env.OPENAI_TRANSCRIBE_MODEL || "gpt-realtime-whisper" },
-        turn_detection: {
-          type: "semantic_vad",
-          eagerness: "low",
-          create_response: true,
-          interrupt_response: true,
-        },
-      },
-      output: { voice: env.OPENAI_REALTIME_VOICE || "marin" },
-    },
-    tools: [{
+  const tools = [{
       type: "function",
       name: "record_learning_observation",
       description: "Privately record one evidence-backed learning observation when it should change future teaching. Do not call after every turn.",
@@ -336,25 +318,23 @@ async function realtimeSession(request, env) {
         },
         required: ["skill", "score", "hesitation", "transfer", "phrase", "context", "nextMove", "hints", "technique"],
       },
-    }],
-  };
-  const form = new FormData();
-  form.set("sdp", sdp);
-  form.set("session", JSON.stringify(session));
-  const baseUrl = String(env.OPENAI_REALTIME_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-  const response = await fetch(`${baseUrl}/realtime/calls`, {
+    }];
+  const baseUrl = String(env.OPENAI_BASE_URL || "https://api.aimodelapi.ai/v1").replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/realtime/tickets`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "OpenAI-Safety-Identifier": safetyIdentifier,
+      "Content-Type": "application/json",
     },
-    body: form,
+    body: JSON.stringify({ client: String(body?.client || "luma-web").slice(0, 40), safety_identifier: safetyIdentifier }),
   });
-  const answer = await response.text();
-  if (!response.ok) return json(request, { error: "Realtime session creation failed.", detail: answer.slice(0, 500) }, response.status);
-  return new Response(answer, {
-    status: 200,
-    headers: { ...corsHeaders(request), "Content-Type": "application/sdp" },
+  const answerText = await response.text();
+  const answer = safeJson(answerText, { error: { message: answerText.slice(0, 500) } });
+  if (!response.ok) return json(request, { error: "Realtime session creation failed.", detail: answer?.error?.message || "Gateway unavailable" }, response.status);
+  return json(request, {
+    ...answer,
+    instructions: realtimeInstructions({ target, nativeLanguage, scenario, prep }),
+    tools,
   });
 }
 
