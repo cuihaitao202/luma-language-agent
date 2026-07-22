@@ -15,6 +15,7 @@ import {
   Mic,
   Phone,
   PhoneCall,
+  PhoneOff,
   Play,
   Repeat2,
   Send,
@@ -392,6 +393,16 @@ const learnerApiUrl = () =>
   location.hostname.endsWith("github.io")
     ? `${hostedCoachOrigin}/api/learner`
     : new URL(`${import.meta.env.BASE_URL}api/learner`, location.origin).href;
+const realtimeApiUrl = (profile, scenario) => {
+  const base = location.hostname.endsWith("github.io")
+    ? `${hostedCoachOrigin}/api/realtime/session`
+    : new URL(`${import.meta.env.BASE_URL}api/realtime/session`, location.origin).href;
+  const url = new URL(base);
+  url.searchParams.set("target", profile?.target || "Spanish");
+  url.searchParams.set("native", profile?.nativeLanguage || "English");
+  url.searchParams.set("scenario", scenario);
+  return url.href;
+};
 const cloudIdentity = (enabled = false) => {
   if (!enabled) return null;
   let learnerId = localStorage.getItem("luma-cloud-learner-id");
@@ -610,6 +621,7 @@ function App() {
     () => new URLSearchParams(location.search).get("coachCall") === "1",
   );
   const [socialScenario, setSocialScenario] = useState(null);
+  const [useLegacyCall, setUseLegacyCall] = useState(false);
   const [callCompleteDay, setCallCompleteDay] = useState(
     () => localStorage.getItem("luma-call-complete-day") || "",
   );
@@ -863,7 +875,7 @@ function App() {
         />
       )}{" "}
       {incomingCall && (
-        <CoachCall
+        useLegacyCall ? <CoachCall
           profile={profile}
           settings={callSettings}
           complete={completeCall}
@@ -871,6 +883,15 @@ function App() {
           learnerModel={learnerModel}
           captureEvidence={captureEvidence}
           socialScenario={socialScenario}
+        /> : <RealtimeCoachCall
+          profile={profile}
+          settings={callSettings}
+          complete={completeCall}
+          miss={missCall}
+          learnerModel={learnerModel}
+          captureEvidence={captureEvidence}
+          socialScenario={socialScenario}
+          useFallback={() => setUseLegacyCall(true)}
         />
       )}
     </>
@@ -1387,6 +1408,217 @@ function CoachCallSetup({ initial, close, save, test }) {
             Save proactive mode <ArrowRight />
           </button>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, captureEvidence, socialScenario, useFallback }) {
+  const [phase, setPhase] = useState("ringing");
+  const [status, setStatus] = useState("Incoming live audio call");
+  const [learnerTranscript, setLearnerTranscript] = useState("");
+  const [coachTranscript, setCoachTranscript] = useState("");
+  const [turns, setTurns] = useState(0);
+  const peerRef = useRef(null);
+  const streamRef = useRef(null);
+  const channelRef = useRef(null);
+  const audioRef = useRef(null);
+  const scenario = socialScenario
+    ? `${socialScenario.title}; relationship: ${socialScenario.relationship}; channel: ${socialScenario.channel}; challenge: ${socialScenario.pressure}; mission: ${socialScenario.mission || "complete a meaningful exchange"}`
+    : `a spontaneous call before work about ${profile?.domain || "the learner's real day"}`;
+
+  useEffect(() => {
+    navigator.vibrate?.([300, 180, 300, 180, 600]);
+    const timer = setInterval(() => navigator.vibrate?.([300, 180, 300]), 2200);
+    return () => {
+      clearInterval(timer);
+      navigator.vibrate?.(0);
+      channelRef.current?.close();
+      peerRef.current?.close();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (audioRef.current) audioRef.current.srcObject = null;
+    };
+  }, []);
+
+  const endCall = () => {
+    channelRef.current?.close();
+    peerRef.current?.close();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    captureEvidence?.({
+      skill: "speaking",
+      score: turns > 1 ? 0.76 : 0.55,
+      hesitation: 0.2,
+      transfer: turns > 2,
+      memoryKey: learnerTranscript || "realtime-call",
+      phrase: learnerTranscript || "live spoken interaction",
+      intent: "sustain a spontaneous live conversation",
+      context: scenario,
+      strategy: "realtime-agentic-dialogue",
+    });
+    complete();
+  };
+
+  const handleEvent = (event) => {
+    if (event.type === "input_audio_buffer.speech_started") {
+      setStatus("You’re speaking — Luma is listening");
+    } else if (event.type === "input_audio_buffer.speech_stopped") {
+      setStatus("Luma is understanding your meaning…");
+    } else if (event.type === "conversation.item.input_audio_transcription.completed") {
+      setLearnerTranscript(event.transcript || "");
+      setTurns((value) => value + 1);
+    } else if (event.type === "response.output_audio_transcript.delta" || event.type === "response.audio_transcript.delta") {
+      setCoachTranscript((value) => value + (event.delta || ""));
+      setStatus("Luma is speaking — interrupt anytime");
+    } else if (event.type === "response.created") {
+      setCoachTranscript("");
+      setStatus("Luma is responding…");
+    } else if (event.type === "response.done") {
+      setStatus("Your turn — take your time, pauses are okay");
+    } else if (event.type === "response.function_call_arguments.done" && event.name === "record_learning_observation") {
+      try {
+        const observation = JSON.parse(event.arguments || "{}");
+        const evidence = {
+          skill: observation.skill || "speaking",
+          score: observation.score,
+          hesitation: observation.hesitation,
+          transfer: observation.transfer,
+          memoryKey: observation.phrase,
+          phrase: observation.phrase,
+          intent: observation.nextMove,
+          context: observation.context || scenario,
+          strategy: "realtime-agent-observation",
+        };
+        captureEvidence?.(evidence);
+        channelRef.current?.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: event.call_id, output: JSON.stringify({ saved: true }) },
+        }));
+        channelRef.current?.send(JSON.stringify({ type: "response.create" }));
+      } catch {
+        channelRef.current?.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: event.call_id, output: JSON.stringify({ saved: false }) },
+        }));
+      }
+    } else if (event.type === "error") {
+      setStatus(event.error?.message || "The live audio session hit a problem");
+    }
+  };
+
+  const answer = async () => {
+    setPhase("connecting");
+    setStatus("Connecting secure live audio…");
+    navigator.vibrate?.(0);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false,
+        },
+      });
+      streamRef.current = stream;
+      const peer = new RTCPeerConnection();
+      peerRef.current = peer;
+      const audio = document.createElement("audio");
+      audio.autoplay = true;
+      audio.playsInline = true;
+      audioRef.current = audio;
+      peer.ontrack = (event) => {
+        audio.srcObject = event.streams[0];
+        audio.play().catch(() => {});
+      };
+      peer.onconnectionstatechange = () => {
+        if (peer.connectionState === "connected") {
+          setPhase("live");
+          setStatus("Live — take your time, and interrupt naturally");
+        }
+        if (["failed", "disconnected"].includes(peer.connectionState)) {
+          setPhase("error");
+          setStatus("The live audio connection was interrupted");
+        }
+      };
+      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+      const channel = peer.createDataChannel("oai-events");
+      channelRef.current = channel;
+      channel.onmessage = (message) => {
+        try { handleEvent(JSON.parse(message.data)); } catch { /* ignore non-JSON events */ }
+      };
+      channel.onopen = () => {
+        channel.send(JSON.stringify({
+          type: "response.create",
+          response: {
+            instructions: "Start the phone call now. Greet the learner naturally in the target language and open an unexpected but relevant real situation. Keep it short so they can speak.",
+          },
+        }));
+      };
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      const cloud = cloudIdentity(profile?.cloudLearning === true);
+      const headers = { "Content-Type": "application/sdp" };
+      if (cloud) {
+        headers["X-Luma-Learner"] = cloud.cloudLearnerId;
+        headers["X-Luma-Secret"] = cloud.cloudSecret;
+      }
+      const response = await fetch(realtimeApiUrl(profile, scenario), {
+        method: "POST",
+        headers,
+        body: offer.sdp,
+      });
+      if (!response.ok) throw new Error("Live voice service is unavailable");
+      await peer.setRemoteDescription({ type: "answer", sdp: await response.text() });
+      navigator.wakeLock?.request?.("screen").catch(() => {});
+    } catch (error) {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      peerRef.current?.close();
+      setPhase("error");
+      setStatus(error?.message || "Could not start live audio");
+    }
+  };
+
+  if (phase === "ringing") return (
+    <div className="incoming">
+      <div className="incomingrings"></div>
+      <div className="caller">
+        <span className="brandmark">L</span>
+        <span className="kicker">REALTIME AUDIO CALL</span>
+        <h1>Luma</h1>
+        <p>Your {profile?.target || "English"} teacher is calling</p>
+      </div>
+      <div className="incomingactions">
+        <button className="decline" onClick={miss}><X /><span>Retry in {settings.retryMinutes} min</span></button>
+        <button className="accept" onClick={answer}><Phone /><span>Answer live</span></button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="incoming calllive">
+      <div className="livehead">
+        <span className="pulse"></span>
+        <b>Luma · realtime audio</b>
+        <span>{turns} spoken turns</span>
+      </div>
+      <section className="conversationcall">
+        <span className="kicker">OPEN MIC · FULL DUPLEX · INTERRUPTIBLE</span>
+        <h1>A real <em>conversation.</em></h1>
+        <p>Your microphone stays open. Pause to think; Luma waits for meaning, not a timer. Speak over Luma whenever you need to interrupt.</p>
+        <div className="orbcard realtimeorb">
+          <div className="orb"><div className="rings"></div><AudioLines size={38} /></div>
+          <p className="quote" role="status">{status}</p>
+        </div>
+        {(learnerTranscript || coachTranscript) && (
+          <div className="callthread" aria-live="polite">
+            {learnerTranscript && <article className="bubblemsg learner"><b>You · live transcript</b><p>{learnerTranscript}</p></article>}
+            {coachTranscript && <article className="bubblemsg coach"><b>Luma</b><p>{coachTranscript}</p></article>}
+          </div>
+        )}
+        <div className="callpromise">
+          <Mic />
+          <span><b>{phase === "live" ? "Microphone live" : phase === "connecting" ? "Connecting…" : "Connection unavailable"}</b><small>Audio is sent continuously during this call. Conversation text is saved only under your separate corpus consent.</small></span>
+        </div>
+        {phase === "error" && <button className="secondary full" onClick={useFallback}>Use transcript fallback</button>}
+        <button className="decline full" onClick={endCall}><PhoneOff /><span>End call</span></button>
       </section>
     </div>
   );

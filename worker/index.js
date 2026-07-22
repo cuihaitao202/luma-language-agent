@@ -248,6 +248,94 @@ function json(request, data, status = 200) {
   return Response.json(data, { status, headers: corsHeaders(request) });
 }
 
+function realtimeInstructions({ target, nativeLanguage, scenario, prep }) {
+  return `You are Luma, a live language teacher on a real phone call with one adult learner.
+Teaching goal: build spontaneous, transferable ${target} communication inside this learner's real life.
+Strongest support language: ${nativeLanguage}. Current situation: ${scenario}.
+Pre-class brief: ${prep ? boundedJson(prep, 2800) : "No prior brief; diagnose naturally through conversation."}
+
+Act as an adaptive agent, not a scripted exercise or questionnaire. Maintain a private working hypothesis about the learner's intention, comprehension, retrieval, grammar, pronunciation, confidence, and cognitive load. Choose your next move from the evidence: continue the real situation, react as the other person, clarify a misunderstanding, model one useful phrase, briefly coach pronunciation, change roles, raise or lower pressure, retrieve an older memory, or move to a surprising but relevant new context. Never announce a fixed sequence and never cycle through canned question patterns.
+
+Begin the call yourself with a short natural opening tied to the situation. Allow interruption and respond immediately to changed intent. Keep most turns to one or two spoken sentences. Do not correct every error. If meaning lands, keep the conversation alive; intervene only when one change has high learning value. When pronunciation materially affects intelligibility or natural rhythm, refer to what you actually heard in the audio—sounds, stress, rhythm, linking, pace, or hesitation—then give a short contrast and invite one natural retry. Do not claim laboratory phoneme scoring or diagnostic certainty.
+
+Vary interaction moves and emotional texture. You may disagree, misunderstand plausibly, remember something the learner said, tell a short story, ask for a decision, switch roles, create time pressure, or invite the learner to teach you. Preserve psychological safety and adult dignity. Use ${nativeLanguage} briefly only for rescue or a concise explanation, then return to ${target}. Do not end after three replies; continue until the learner ends the call.`;
+}
+
+async function realtimeSession(request, env) {
+  if (!env.OPENAI_API_KEY) return json(request, { error: "Realtime voice is not configured." }, 503);
+  const url = new URL(request.url);
+  const target = String(url.searchParams.get("target") || "Spanish").slice(0, 40);
+  const nativeLanguage = String(url.searchParams.get("native") || "English").slice(0, 40);
+  const scenario = String(url.searchParams.get("scenario") || "a spontaneous real-life call").slice(0, 300);
+  const sdp = await request.text();
+  if (!sdp.includes("v=0")) return json(request, { error: "A valid WebRTC offer is required." }, 400);
+  let prep = null;
+  let safetyIdentifier = "anonymous-luma-learner";
+  const credentials = cloudCredentials(request);
+  if (credentials.learnerId && credentials.secret) {
+    const auth = await authorizeLearner(request, env);
+    if (!auth.error) {
+      prep = safeJson(auth.learner.prep_json, null);
+      safetyIdentifier = await sha256(auth.learner.learner_id);
+    }
+  }
+  const session = {
+    type: "realtime",
+    model: env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
+    output_modalities: ["audio"],
+    instructions: realtimeInstructions({ target, nativeLanguage, scenario, prep }),
+    audio: {
+      input: {
+        transcription: { model: env.OPENAI_TRANSCRIBE_MODEL || "gpt-realtime-whisper" },
+        turn_detection: {
+          type: "semantic_vad",
+          eagerness: "low",
+          create_response: true,
+          interrupt_response: true,
+        },
+      },
+      output: { voice: env.OPENAI_REALTIME_VOICE || "marin" },
+    },
+    tools: [{
+      type: "function",
+      name: "record_learning_observation",
+      description: "Privately record one evidence-backed learning observation when it should change future teaching. Do not call after every turn.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          skill: { type: "string", enum: ["listening", "speaking", "reading", "writing"] },
+          score: { type: "number", minimum: 0, maximum: 1 },
+          hesitation: { type: "number", minimum: 0, maximum: 1 },
+          transfer: { type: "boolean" },
+          phrase: { type: "string" },
+          context: { type: "string" },
+          nextMove: { type: "string" },
+        },
+        required: ["skill", "score", "hesitation", "transfer", "phrase", "context", "nextMove"],
+      },
+    }],
+  };
+  const form = new FormData();
+  form.set("sdp", sdp);
+  form.set("session", JSON.stringify(session));
+  const baseUrl = String(env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/realtime/calls`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      "OpenAI-Safety-Identifier": safetyIdentifier,
+    },
+    body: form,
+  });
+  const answer = await response.text();
+  if (!response.ok) return json(request, { error: "Realtime session creation failed.", detail: answer.slice(0, 500) }, response.status);
+  return new Response(answer, {
+    status: 200,
+    headers: { ...corsHeaders(request), "Content-Type": "application/sdp" },
+  });
+}
+
 function coachInstructions(target, nativeLanguage) {
   return `You are Luma, an expert interactive second-language teacher for busy adults.
 Your job is not to complete a chat turn; it is to build transferable listening, speaking, reading, and writing capability for this particular learner.
@@ -481,7 +569,16 @@ export default {
         apiStrategy: "responses_with_chat_completions_fallback",
         coachingMode: "multi_turn_interactive",
         cloudLearning: Boolean(env.DB),
+        realtimeVoice: Boolean(env.OPENAI_API_KEY),
+        realtimeModel: env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
       });
+    if (url.pathname === "/api/realtime/session" && request.method === "POST") {
+      try {
+        return await realtimeSession(request, env);
+      } catch (error) {
+        return json(request, { error: "Realtime voice unavailable.", detail: String(error?.message || error) }, 500);
+      }
+    }
     if (url.pathname === "/api/learner" && ["GET", "POST"].includes(request.method)) {
       try {
         return await cloudLearner(request, env);
