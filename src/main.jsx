@@ -537,7 +537,11 @@ function offlineCoachReply(target, utterance, intent, responseTurn) {
 
 async function registerLumaWorker() {
   if (!("serviceWorker" in navigator)) return null;
-  return navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
+  const registration = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
+    updateViaCache: "none",
+  });
+  registration.update().catch(() => {});
+  return registration;
 }
 
 function downloadCallCalendar(settings) {

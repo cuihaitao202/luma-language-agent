@@ -1,4 +1,4 @@
-const CACHE='luma-v3';
+const CACHE='luma-realtime-v18';
 const BASE=new URL(self.registration.scope).pathname;
 const asset=path=>new URL(path,self.registration.scope).href;
 const CORE=[BASE,asset('manifest.webmanifest'),asset('luma-icon.svg')];
@@ -13,7 +13,10 @@ self.addEventListener('activate',event=>{
 
 self.addEventListener('fetch',event=>{
   if(event.request.method!=='GET')return;
-  event.respondWith(fetch(event.request).then(response=>{const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy));return response}).catch(()=>caches.match(event.request).then(hit=>hit||caches.match(BASE))));
+  const request=event.request.mode==='navigate'
+    ? new Request(event.request,{cache:'no-store'})
+    : event.request;
+  event.respondWith(fetch(request).then(response=>{const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy));return response}).catch(()=>caches.match(event.request).then(hit=>hit||caches.match(BASE))));
 });
 
 self.addEventListener('push',event=>{
