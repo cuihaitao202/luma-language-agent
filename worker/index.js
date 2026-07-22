@@ -341,7 +341,7 @@ async function realtimeSession(request, env) {
   const form = new FormData();
   form.set("sdp", sdp);
   form.set("session", JSON.stringify(session));
-  const baseUrl = String(env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const baseUrl = String(env.OPENAI_REALTIME_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
   const response = await fetch(`${baseUrl}/realtime/calls`, {
     method: "POST",
     headers: {

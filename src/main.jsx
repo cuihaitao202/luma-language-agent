@@ -1576,7 +1576,20 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
         headers,
         body: offer.sdp,
       });
-      if (!response.ok) throw new Error("Live voice service is unavailable");
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const payload = await response.clone().json();
+          detail = payload?.detail || payload?.error || "";
+        } catch {
+          detail = await response.text().catch(() => "");
+        }
+        throw new Error(
+          detail
+            ? `Live voice service is unavailable (${response.status}): ${String(detail).slice(0, 180)}`
+            : `Live voice service is unavailable (${response.status})`,
+        );
+      }
       await peer.setRemoteDescription({ type: "answer", sdp: await response.text() });
       navigator.wakeLock?.request?.("screen").catch(() => {});
     } catch (error) {
