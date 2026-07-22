@@ -94,7 +94,7 @@ async function ensureLearningSchema(env) {
   if (!env.DB) return false;
   await env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS learners (learner_id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, consent_version TEXT NOT NULL, profile_json TEXT NOT NULL DEFAULT '{}', model_json TEXT NOT NULL DEFAULT '{}', prep_json TEXT NOT NULL DEFAULT '{}', corpus_consent INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS learning_events (event_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, event_type TEXT NOT NULL, skill TEXT, score REAL, hesitation REAL, transfer INTEGER NOT NULL DEFAULT 0, strategy TEXT, context TEXT, memory_key_hash TEXT, created_at INTEGER NOT NULL, FOREIGN KEY (learner_id) REFERENCES learners(learner_id) ON DELETE CASCADE)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS learning_events (event_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, event_type TEXT NOT NULL, skill TEXT, score REAL, hesitation REAL, hints INTEGER NOT NULL DEFAULT 0, response_latency_ms INTEGER, technique TEXT, transfer INTEGER NOT NULL DEFAULT 0, strategy TEXT, context TEXT, memory_key_hash TEXT, created_at INTEGER NOT NULL, FOREIGN KEY (learner_id) REFERENCES learners(learner_id) ON DELETE CASCADE)`),
     env.DB.prepare(`CREATE INDEX IF NOT EXISTS learning_events_learner_time_idx ON learning_events (learner_id, created_at DESC)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS strategy_outcomes (strategy TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0, successes INTEGER NOT NULL DEFAULT 0, transfer_successes INTEGER NOT NULL DEFAULT 0, mean_score REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS conversation_corpus (corpus_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, session_id TEXT NOT NULL, learner_text TEXT NOT NULL, coach_text TEXT NOT NULL, target_language TEXT, scenario TEXT, outcome_json TEXT NOT NULL DEFAULT '{}', consent_version TEXT NOT NULL, created_at INTEGER NOT NULL, FOREIGN KEY (learner_id) REFERENCES learners(learner_id) ON DELETE CASCADE)`),
@@ -103,6 +103,9 @@ async function ensureLearningSchema(env) {
   for (const statement of [
     "ALTER TABLE learners ADD COLUMN corpus_consent INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE learners ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE learning_events ADD COLUMN hints INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE learning_events ADD COLUMN response_latency_ms INTEGER",
+    "ALTER TABLE learning_events ADD COLUMN technique TEXT",
   ]) {
     try { await env.DB.prepare(statement).run(); } catch (error) {
       if (!String(error?.message || error).toLowerCase().includes("duplicate column")) throw error;
@@ -142,6 +145,16 @@ function buildPrep(model, recentEvents = [], insights = {}) {
   const hesitation = recentEvents.length
     ? recentEvents.reduce((sum, event) => sum + finite(event.hesitation), 0) / recentEvents.length
     : 0;
+  const hinted = recentEvents.filter((event) => finite(event.hints) > 0).length;
+  const latencyValues = recentEvents.map((event) => finite(event.response_latency_ms)).filter((value) => value > 0);
+  const averageLatencyMs = latencyValues.length
+    ? Math.round(latencyValues.reduce((sum, value) => sum + value, 0) / latencyValues.length)
+    : null;
+  const retrievalTechnique = hinted > recentEvents.length / 3
+    ? "generation-first-with-one-cue-then-immediate-cue-fade"
+    : hesitation > 0.35
+      ? "short-successful-retrieval-then-expanded-transfer"
+      : "free-recall-then-interleaved-transfer";
   const recentStrategies = recentEvents.map((event) => event.strategy).filter(Boolean);
   const lessonFormats = ["role-reversal", "skeptical-interview", "story-reconstruction", "design-review", "teach-it-back"];
   const format = lessonFormats.find((candidate) => !recentStrategies.includes(candidate)) || lessonFormats[Date.now() % lessonFormats.length];
@@ -150,13 +163,18 @@ function buildPrep(model, recentEvents = [], insights = {}) {
     weakestSkill: weakest,
     dueMemoryKeys: due.map((memory) => String(memory.key || "").slice(0, 120)),
     recentAverageHesitation: Math.round(hesitation * 100) / 100,
+    recentHintDependence: recentEvents.length ? Math.round((hinted / recentEvents.length) * 100) / 100 : 0,
+    averageResponseLatencyMs,
+    retrievalTechnique,
     lessonFormat: format,
     avoidRecentScenarios: (insights.recentScenarios || []).slice(0, 5),
     recommendedStrategy: insights.recommendedStrategy || "focused-recast",
     noveltyRule: "Do not repeat the last scenario; preserve the language function while changing role, stakes, and channel.",
     teachingPlan: hesitation > 0.35
-      ? "Reduce initial support, shorten the first production demand, then require an unaided retry."
-      : `Start with meaningful ${weakest} evidence, retrieve one due memory, then test it in a changed context.`,
+      ? "Begin with a small successful retrieval, give at most one semantic cue, remove it immediately, then expand into spontaneous use."
+      : `Require generation before explanation, collect meaningful ${weakest} evidence, interleave one confusable expression, then test transfer in a changed context.`,
+    consolidationPlan: "End with one short successful retrieval; near bedtime, schedule the next test after sleep instead of adding more new material.",
+    pronunciationPlan: "Use varied voices or contexts: listen for a contrast, identify it, shadow once, then produce freely in a new sentence.",
   };
 }
 
@@ -178,7 +196,7 @@ async function prepareInactiveLearners(env, inactiveBefore = Date.now() - 2 * 36
   if (!await ensureLearningSchema(env)) return 0;
   const learners = await env.DB.prepare("SELECT learner_id, model_json FROM learners WHERE last_active_at > 0 AND last_active_at <= ? ORDER BY last_active_at ASC LIMIT 100").bind(inactiveBefore).all();
   for (const learner of learners.results || []) {
-    const recent = await env.DB.prepare("SELECT skill, score, hesitation, transfer, strategy, created_at FROM learning_events WHERE learner_id = ? ORDER BY created_at DESC LIMIT 20").bind(learner.learner_id).all();
+    const recent = await env.DB.prepare("SELECT skill, score, hesitation, hints, response_latency_ms, technique, transfer, strategy, created_at FROM learning_events WHERE learner_id = ? ORDER BY created_at DESC LIMIT 20").bind(learner.learner_id).all();
     const corpus = await env.DB.prepare("SELECT scenario FROM conversation_corpus WHERE learner_id = ? ORDER BY created_at DESC LIMIT 5").bind(learner.learner_id).all();
     const bestStrategy = await env.DB.prepare("SELECT strategy FROM strategy_outcomes WHERE attempts >= 3 ORDER BY (transfer_successes * 1.0 / attempts) DESC, mean_score DESC LIMIT 1").first();
     const prep = {
@@ -201,8 +219,8 @@ async function saveCloudEvidence(env, learnerId, evidence = {}) {
   const memoryHash = evidence.memoryKey ? await sha256(evidence.memoryKey) : null;
   const now = Date.now();
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO learning_events (event_id, learner_id, event_type, skill, score, hesitation, transfer, strategy, context, memory_key_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(crypto.randomUUID(), learnerId, String(evidence.type || "practice-turn").slice(0, 40), String(evidence.skill || "speaking").slice(0, 20), score, hesitation, evidence.transfer ? 1 : 0, strategy, String(evidence.context || "").slice(0, 160), memoryHash, now),
+    env.DB.prepare("INSERT INTO learning_events (event_id, learner_id, event_type, skill, score, hesitation, hints, response_latency_ms, technique, transfer, strategy, context, memory_key_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), learnerId, String(evidence.type || "practice-turn").slice(0, 40), String(evidence.skill || "speaking").slice(0, 20), score, hesitation, Math.max(0, Math.min(3, finite(evidence.hints))), finite(evidence.responseLatencyMs) || null, String(evidence.technique || "").slice(0, 100) || null, evidence.transfer ? 1 : 0, strategy, String(evidence.context || "").slice(0, 160), memoryHash, now),
     env.DB.prepare(`INSERT INTO strategy_outcomes (strategy, attempts, successes, transfer_successes, mean_score, updated_at) VALUES (?, 1, ?, ?, ?, ?)
       ON CONFLICT(strategy) DO UPDATE SET attempts = attempts + 1, successes = successes + excluded.successes, transfer_successes = transfer_successes + excluded.transfer_successes, mean_score = ((mean_score * attempts) + excluded.mean_score) / (attempts + 1), updated_at = excluded.updated_at`)
       .bind(strategy, score >= 0.7 ? 1 : 0, evidence.transfer && score >= 0.7 ? 1 : 0, score, now),
@@ -222,7 +240,7 @@ async function cloudLearner(request, env) {
     });
   }
   const model = body.learnerModel && typeof body.learnerModel === "object" ? body.learnerModel : {};
-  const recent = await env.DB.prepare("SELECT skill, score, hesitation, transfer, strategy, created_at FROM learning_events WHERE learner_id = ? ORDER BY created_at DESC LIMIT 20")
+  const recent = await env.DB.prepare("SELECT skill, score, hesitation, hints, response_latency_ms, technique, transfer, strategy, created_at FROM learning_events WHERE learner_id = ? ORDER BY created_at DESC LIMIT 20")
     .bind(auth.learner.learner_id).all();
   const prep = buildPrep(model, recent.results || []);
   const corpusConsent = body.profile?.corpusConsent === true ? 1 : 0;
@@ -255,6 +273,8 @@ Strongest support language: ${nativeLanguage}. Current situation: ${scenario}.
 Pre-class brief: ${prep ? boundedJson(prep, 2800) : "No prior brief; diagnose naturally through conversation."}
 
 Act as an adaptive agent, not a scripted exercise or questionnaire. Maintain a private working hypothesis about the learner's intention, comprehension, retrieval, grammar, pronunciation, confidence, and cognitive load. Choose your next move from the evidence: continue the real situation, react as the other person, clarify a misunderstanding, model one useful phrase, briefly coach pronunciation, change roles, raise or lower pressure, retrieve an older memory, or move to a surprising but relevant new context. Never announce a fixed sequence and never cycle through canned question patterns.
+
+Make memory efficient: ask for generation before showing a model; give at most one semantic cue and fade it immediately; after an error, invite one corrected retry without shame; after success, interleave a confusable expression and later test the same function in a changed context. Introduce no more than three genuinely new memory targets in one call. For pronunciation, use a short listen-contrast-shadow-free-production sequence and vary voice, speed, or phonetic context rather than drilling one identical token. Near the learner's bedtime, end new learning early with one short successful retrieval that can consolidate during sleep.
 
 Begin the call yourself with a short natural opening tied to the situation. Allow interruption and respond immediately to changed intent. Keep most turns to one or two spoken sentences. Do not correct every error. If meaning lands, keep the conversation alive; intervene only when one change has high learning value. When pronunciation materially affects intelligibility or natural rhythm, refer to what you actually heard in the audio—sounds, stress, rhythm, linking, pace, or hesitation—then give a short contrast and invite one natural retry. Do not claim laboratory phoneme scoring or diagnostic certainty.
 
@@ -311,8 +331,10 @@ async function realtimeSession(request, env) {
           phrase: { type: "string" },
           context: { type: "string" },
           nextMove: { type: "string" },
+          hints: { type: "integer", minimum: 0, maximum: 3 },
+          technique: { type: "string" },
         },
-        required: ["skill", "score", "hesitation", "transfer", "phrase", "context", "nextMove"],
+        required: ["skill", "score", "hesitation", "transfer", "phrase", "context", "nextMove", "hints", "technique"],
       },
     }],
   };

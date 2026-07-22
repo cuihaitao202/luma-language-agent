@@ -1423,6 +1423,8 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const streamRef = useRef(null);
   const channelRef = useRef(null);
   const audioRef = useRef(null);
+  const responseEndedAtRef = useRef(null);
+  const responseLatencyRef = useRef(null);
   const scenario = socialScenario
     ? `${socialScenario.title}; relationship: ${socialScenario.relationship}; channel: ${socialScenario.channel}; challenge: ${socialScenario.pressure}; mission: ${socialScenario.mission || "complete a meaningful exchange"}`
     : `a spontaneous call before work about ${profile?.domain || "the learner's real day"}`;
@@ -1460,6 +1462,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
 
   const handleEvent = (event) => {
     if (event.type === "input_audio_buffer.speech_started") {
+      if (responseEndedAtRef.current) responseLatencyRef.current = Date.now() - responseEndedAtRef.current;
       setStatus("You’re speaking — Luma is listening");
     } else if (event.type === "input_audio_buffer.speech_stopped") {
       setStatus("Luma is understanding your meaning…");
@@ -1473,6 +1476,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       setCoachTranscript("");
       setStatus("Luma is responding…");
     } else if (event.type === "response.done") {
+      responseEndedAtRef.current = Date.now();
       setStatus("Your turn — take your time, pauses are okay");
     } else if (event.type === "response.function_call_arguments.done" && event.name === "record_learning_observation") {
       try {
@@ -1487,6 +1491,9 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
           intent: observation.nextMove,
           context: observation.context || scenario,
           strategy: "realtime-agent-observation",
+          hints: observation.hints || 0,
+          technique: observation.technique,
+          responseLatencyMs: responseLatencyRef.current,
         };
         captureEvidence?.(evidence);
         channelRef.current?.send(JSON.stringify({

@@ -4,7 +4,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export function createLearnerModel(profile = {}) {
   return {
-    version: 1,
+    version: 2,
     createdAt: Date.now(),
     profile: {
       goal: profile.goal || "communicate in real life",
@@ -22,6 +22,12 @@ export function createLearnerModel(profile = {}) {
     ),
     memories: {},
     recentSignals: [],
+    learningPolicy: {
+      desiredRetention: 0.88,
+      maxNewMemoriesPerSession: 3,
+      preferGenerationBeforeExplanation: true,
+      interleaveAfterSuccesses: 2,
+    },
   };
 }
 
@@ -33,14 +39,24 @@ export function retrievability(memory, now = Date.now()) {
 
 export function recordEvidence(model, evidence, now = Date.now()) {
   const next = structuredClone(model || createLearnerModel());
+  next.version = 2;
+  next.learningPolicy ||= {
+    desiredRetention: 0.88,
+    maxNewMemoriesPerSession: 3,
+    preferGenerationBeforeExplanation: true,
+    interleaveAfterSuccesses: 2,
+  };
   const skill = SKILLS.includes(evidence.skill) ? evidence.skill : "speaking";
   const score = clamp(Number(evidence.score ?? 0.5), 0, 1);
   const hesitation = clamp(Number(evidence.hesitation ?? 0), 0, 1);
   const transfer = Boolean(evidence.transfer);
+  const hints = clamp(Number(evidence.hints ?? 0), 0, 3);
+  const latencyMs = Math.max(0, Number(evidence.responseLatencyMs ?? 0));
+  const latencyPenalty = latencyMs > 0 ? clamp((latencyMs - 1800) / 18000, 0, 0.22) : 0;
   const current = next.skills[skill] || { estimate: 0.45, evidence: 0 };
   const weight = Math.min(0.32, 0.14 + current.evidence * 0.015);
   current.estimate = clamp(
-    current.estimate * (1 - weight) + (score - hesitation * 0.15) * weight,
+    current.estimate * (1 - weight) + (score - hesitation * 0.15 - hints * 0.06 - latencyPenalty) * weight,
     0.05,
     0.98,
   );
@@ -55,26 +71,85 @@ export function recordEvidence(model, evidence, now = Date.now()) {
     contexts: [],
     stabilityHours: 18,
     successfulRetrievals: 0,
+    difficulty: 5,
+    lapses: 0,
+    retrievalHistory: [],
   };
   const priorR = retrievability(previous, now);
-  const quality = clamp(score - hesitation * 0.2 + (transfer ? 0.12 : 0), 0, 1);
-  const growth = quality >= 0.72 ? 1.7 + priorR * 0.7 : quality >= 0.45 ? 1.15 : 0.62;
+  const unaided = hints === 0;
+  const quality = clamp(score - hesitation * 0.2 - hints * 0.1 - latencyPenalty + (transfer ? 0.12 : 0), 0, 1);
+  previous.difficulty = clamp(
+    Number(previous.difficulty || 5) + (0.68 - quality) * 1.6 - (transfer ? 0.18 : 0),
+    1,
+    10,
+  );
+  const desirableDifficultyBonus = priorR >= 0.35 && priorR <= 0.82 && quality >= 0.72 ? 0.35 : 0;
+  const growth = quality >= 0.72
+    ? 1.45 + priorR * 0.55 + desirableDifficultyBonus + (unaided ? 0.18 : 0)
+    : quality >= 0.45 ? 1.08 : 0.55;
   previous.stabilityHours = clamp(previous.stabilityHours * growth, 4, 24 * 180);
   previous.lastSeenAt = now;
   previous.nextDueAt = now + previous.stabilityHours * 36e5 * 0.72;
   previous.lastScore = score;
   previous.hesitation = hesitation;
   previous.successfulRetrievals += quality >= 0.65 ? 1 : 0;
+  previous.lapses = Number(previous.lapses || 0) + (quality < 0.45 ? 1 : 0);
+  previous.lastQuality = quality;
+  previous.lastLatencyMs = latencyMs || null;
+  previous.lastHints = hints;
+  previous.retrievalHistory = [
+    ...(previous.retrievalHistory || []),
+    { at: now, quality, unaided, transfer, latencyMs: latencyMs || null },
+  ].slice(-12);
   previous.phrase = evidence.phrase || previous.phrase;
   if (evidence.context && !previous.contexts.includes(evidence.context)) {
     previous.contexts = [...previous.contexts, evidence.context].slice(-5);
   }
   next.memories[key] = previous;
   next.recentSignals = [
-    { skill, score, hesitation, transfer, at: now },
+    { skill, score, hesitation, transfer, hints, latencyMs: latencyMs || null, at: now },
     ...(next.recentSignals || []),
   ].slice(0, 20);
   return next;
+}
+
+export function practiceTechnique(memory, skill = "speaking", now = Date.now()) {
+  if (!memory) return { mode: "generation-first", reason: "Attempt meaning before seeing a model." };
+  const r = retrievability(memory, now);
+  if (skill === "speaking" && (memory.lastScore || 0) < 0.72) {
+    return { mode: "listen-contrast-shadow-transfer", reason: "Hear varied models, discriminate the contrast, shadow briefly, then speak freely." };
+  }
+  if (r < 0.45 || Number(memory.lapses || 0) > 1) {
+    return { mode: "cue-fade-repair", reason: "Start with a semantic cue, repair one error, then remove the cue immediately." };
+  }
+  if (r < 0.82) {
+    return { mode: "free-recall", reason: "Retrieval is effortful enough to strengthen memory without a hint." };
+  }
+  if ((memory.successfulRetrievals || 0) >= 2) {
+    return { mode: "interleaved-transfer", reason: "Contrast it with a confusable expression inside a changed role and situation." };
+  }
+  return { mode: "generation-first", reason: "Produce a personal example before receiving explanation." };
+}
+
+export function learningPlan(model, now = Date.now(), localHour = new Date(now).getHours()) {
+  const action = nextBestAction(model, now);
+  const technique = practiceTechnique(action.memory, action.skill, now);
+  const beforeSleep = localHour >= 20 || localHour <= 1;
+  return {
+    targetSkill: action.skill,
+    memoryKey: action.memory?.key || null,
+    technique: technique.mode,
+    why: technique.reason,
+    steps: [
+      "generation-before-model",
+      technique.mode,
+      "immediate-corrected-retry",
+      "changed-context-transfer",
+      beforeSleep ? "short-successful-bedtime-retrieval" : "schedule-at-desirable-difficulty",
+    ],
+    limits: { newMemories: 3, correctionsPerTurn: 1, hintsBeforeRetry: 1 },
+    beforeSleep,
+  };
 }
 
 export function nextBestAction(model, now = Date.now()) {
@@ -83,8 +158,13 @@ export function nextBestAction(model, now = Date.now()) {
     .sort((a, b) => a[1].estimate - b[1].estimate)[0]?.[0] || "speaking";
   const memories = Object.values(safe.memories || {});
   const due = memories
-    .map((memory) => ({ ...memory, r: retrievability(memory, now) }))
-    .sort((a, b) => a.r - b.r)[0];
+    .map((memory) => {
+      const r = retrievability(memory, now);
+      const desirableGap = Math.abs(r - Number(safe.learningPolicy?.desiredRetention || 0.88));
+      const lapsePriority = Math.min(0.25, Number(memory.lapses || 0) * 0.06);
+      return { ...memory, r, priority: desirableGap - lapsePriority };
+    })
+    .sort((a, b) => a.priority - b.priority)[0];
   if (due && (due.nextDueAt <= now || due.r < 0.62)) {
     return {
       mode: "transfer-retrieval",
@@ -123,6 +203,7 @@ export function learnerSnapshot(model) {
       phrase: action.memory?.phrase || null,
       knownContexts: action.memory?.contexts || [],
     },
+    learningPlan: learningPlan(safe),
     instruction:
       "Treat these estimates as provisional. Elicit evidence through a meaningful task, adapt difficulty from success and hesitation, and test transfer rather than recognition.",
   };

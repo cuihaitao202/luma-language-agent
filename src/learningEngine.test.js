@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   createLearnerModel,
   learnerSnapshot,
+  learningPlan,
   nextBestAction,
+  practiceTechnique,
   recordEvidence,
   retrievability,
   saveContextualLookup,
@@ -14,6 +16,32 @@ test("evidence updates only the observed capability", () => {
   const next = recordEvidence(model, { skill: "speaking", score: 0.9 });
   assert.ok(next.skills.speaking.estimate > model.skills.speaking.estimate);
   assert.equal(next.skills.listening.estimate, model.skills.listening.estimate);
+});
+
+test("hints and slow retrieval reduce learning quality", () => {
+  const base = createLearnerModel();
+  const unaided = recordEvidence(base, {
+    skill: "speaking", score: 0.85, memoryKey: "request", hints: 0, responseLatencyMs: 2200,
+  }, 10_000);
+  const prompted = recordEvidence(base, {
+    skill: "speaking", score: 0.85, memoryKey: "request", hints: 2, responseLatencyMs: 14_000,
+  }, 10_000);
+  assert.ok(unaided.memories.request.stabilityHours > prompted.memories.request.stabilityHours);
+  assert.ok(unaided.skills.speaking.estimate > prompted.skills.speaking.estimate);
+});
+
+test("practice changes from repair to interleaved transfer", () => {
+  const weak = { lastSeenAt: 1_000, stabilityHours: 18, lastScore: 0.4, lapses: 2 };
+  assert.equal(practiceTechnique(weak, "speaking", 2_000).mode, "listen-contrast-shadow-transfer");
+  const strong = { lastSeenAt: 1_000, stabilityHours: 100, lastScore: 0.9, successfulRetrievals: 3 };
+  assert.equal(practiceTechnique(strong, "reading", 2_000).mode, "interleaved-transfer");
+});
+
+test("late learning plans finish with a short successful retrieval", () => {
+  const plan = learningPlan(createLearnerModel(), 1_000, 22);
+  assert.equal(plan.beforeSleep, true);
+  assert.equal(plan.steps.at(-1), "short-successful-bedtime-retrieval");
+  assert.equal(plan.limits.correctionsPerTurn, 1);
 });
 
 test("a contextual lookup becomes a scheduled learning memory", () => {

@@ -20,6 +20,14 @@ This document records the evidence used for the adaptive-engine redesign. It is 
 
 8. **Balanced instruction includes meaningful input, meaningful output, deliberate attention, and fluency.** Paul Nation's Four Strands and teacher Gianfranco Conti's EPI both influenced the implementation: model useful chunks through listening, process them repeatedly, use them for a real purpose, and later increase speed with known language. These are methodology frameworks, not new neuroscience discoveries. Sources: [Applying the Four Strands](https://www.wgtn.ac.nz/lals/resources/paul-nations-resources/paul-nations-publications/publications/documents/yamamoto-four-strands.pdf), [Conti on EPI](https://gianfrancoconti.com/2022/04/28/ten-misconceptions-about-epi-part-1-on-grammar-and-phonics/).
 
+9. **Successful recall is not equally diagnostic.** Luma now distinguishes unaided retrieval from prompted recognition and records response latency separately from correctness. A correct response with multiple hints or a long access delay grows stability less than a fluent unaided response. The scheduler aims near a configurable desired-retention point rather than always selecting the most forgotten item; very weak items receive one cue followed by immediate cue fading.
+
+10. **Generation precedes explanation.** Every new target should begin with an attempt to infer, reconstruct, or express meaning before the model supplies the polished form. Feedback is followed immediately by one corrected retry, then later by a changed-context test. This prevents explanation from being mistaken for retrievable knowledge.
+
+11. **Pronunciation needs variable perception and free production, not identical repetition.** Recent high-variability phonetic-training research supports varying talker or phonetic context and connecting perception with production. Luma's realtime teacher uses a listen–contrast–shadow–free-production sequence and then changes sentence or situation. Sources: [High-variability phonetic training meta-analysis](https://www.cambridge.org/core/journals/applied-psycholinguistics/article/does-perceptual-high-variability-phonetic-training-improve-l2-speech-production-a-metaanalysis-of-perceptionproduction-connection/E38D8F5CE65DC708137B0E95F97C6BC7), [audio-visual HVPT classroom study](https://journals.sagepub.com/doi/10.1177/13621688231219773), and [authentic-material shadowing study](https://benjamins.com/catalog/jslp.22033.lu).
+
+12. **Sleep is a consolidation boundary, not a magical teaching channel.** Evidence supports better retention across sleep in some vocabulary-learning conditions, but it does not justify claiming that passive overnight playback teaches a language. Near bedtime, Luma limits novelty and ends with one short successful retrieval; the next session tests retention and transfer after sleep. Sources: [emotional text and sleep consolidation in L2 vocabulary](https://doi.org/10.1111/lang.70029) and [overnight consolidation and next-day learning](https://pubmed.ncbi.nlm.nih.gov/40675054/).
+
 ## Product protocol to implement next
 
 - Ingest a paper, transcript, agenda, or draft supplied by the learner.
@@ -29,6 +37,9 @@ This document records the evidence used for the adaptive-engine redesign. It is 
 - Correct one high-leverage bottleneck and require an immediate retry.
 - Retest the same function later through a different skill and situation.
 - Update memory stability from unaided retrieval, latency/hesitation, and transfer—not from taps or streaks.
+- Cap genuinely new memory targets at three per call; spend remaining time retrieving, contrasting, and transferring.
+- Interleave a confusable expression only after initial success so difficulty remains productive rather than overwhelming.
+- Record hints and response latency as distinct signals; do not collapse them into a single opaque fluency score.
 - Regularly run no-help “proof missions” using new material; archive mastered language only after successful cross-context use.
 
 ## Domain anchors for this learner
