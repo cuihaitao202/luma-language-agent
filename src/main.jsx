@@ -1546,12 +1546,13 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       });
       streamRef.current = stream;
       const cloud = cloudIdentity(profile?.cloudLearning === true);
+      const sessionUrl = realtimeApiUrl(profile, scenario);
       const headers = { "Content-Type": "application/json" };
-      if (cloud) {
+      if (cloud && new URL(sessionUrl).origin === location.origin) {
         headers["X-Luma-Learner"] = cloud.cloudLearnerId;
         headers["X-Luma-Secret"] = cloud.cloudSecret;
       }
-      const response = await fetch(realtimeApiUrl(profile, scenario), {
+      const response = await fetch(sessionUrl, {
         method: "POST",
         headers,
         body: JSON.stringify({ client: "luma-web" }),
