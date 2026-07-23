@@ -381,6 +381,7 @@ const publicCallUrl = () =>
   `${location.origin}${location.pathname}?coachCall=1`;
 const hostedCoachOrigin =
   "https://luma-language-agent.taotao918918918.chatgpt.site";
+const publicRealtimeOrigin = "https://sg.api.aimodelapi.ai";
 const practiceSessionId = crypto.randomUUID();
 const coachApiUrl = () =>
   location.hostname.endsWith("github.io")
@@ -395,9 +396,10 @@ const learnerApiUrl = () =>
     ? `${hostedCoachOrigin}/api/learner`
     : new URL(`${import.meta.env.BASE_URL}api/learner`, location.origin).href;
 const realtimeApiUrl = (profile, scenario) => {
-  const base = location.hostname.endsWith("github.io")
-    ? `${hostedCoachOrigin}/api/realtime/session`
-    : new URL(`${import.meta.env.BASE_URL}api/realtime/session`, location.origin).href;
+  const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const base = isLocal
+    ? new URL(`${import.meta.env.BASE_URL}api/realtime/session`, location.origin).href
+    : `${publicRealtimeOrigin}/v1/realtime/luma-tickets`;
   const url = new URL(base);
   url.searchParams.set("target", profile?.target || "Spanish");
   url.searchParams.set("native", profile?.nativeLanguage || "English");
