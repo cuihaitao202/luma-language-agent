@@ -1433,18 +1433,40 @@ nav {
     opacity: 0.55;
   }
 }
-.contextlookupcta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-  padding: 0;
-  border: 0;
-  background: transparent;
+.contextlenscard {
+  max-width: 620px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #244b3928;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fffdf8 0%, #e9f0e9 100%);
+  box-shadow: 0 14px 35px #263e3018;
+}
+.contextlensintro { display: flex; align-items: center; gap: 12px; }
+.contextlensintro > span { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: var(--green); color: white; }
+.contextlensintro > span svg { width: 21px; }
+.contextlensintro > div { display: grid; flex: 1; gap: 2px; }
+.contextlensintro b { font-size: 16px; }
+.contextlensintro small { color: var(--muted); line-height: 1.35; }
+.contextlensintro > svg { width: 18px; color: var(--coral); }
+.contextlensactions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 13px; }
+.contextlensactions button {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #244b3920;
+  border-radius: 12px;
+  background: #fffefa;
   color: var(--green);
-  font-weight: 700;
+  text-align: left;
   cursor: pointer;
 }
+.contextlensactions button:hover { border-color: var(--coral); transform: translateY(-1px); }
+.contextlensactions svg { width: 20px; color: var(--coral); }
+.contextlensactions b { font-size: 12px; }
+.contextlensactions small { color: var(--muted); font-size: 10px; line-height: 1.25; }
 .lookupShell { min-height: 100vh; background: #f4f1e9; color: var(--green); }
 .lookupShell nav { max-width: 1180px; margin: auto; }
 .lookuphero { max-width: 1180px; margin: 45px auto 30px; }
@@ -1456,6 +1478,32 @@ nav {
 .lookupinputs label:not(.uploadbox) { display: block; margin: 14px 0 7px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
 .lookupinputs input, .lookupinputs textarea { box-sizing: border-box; width: 100%; padding: 14px; border: 1px solid #244b3930; border-radius: 12px; background: white; color: var(--green); font: inherit; }
 .lookupinputs textarea { min-height: 150px; resize: vertical; line-height: 1.5; }
+.lookupmodepanel { margin: -8px -8px 22px; padding: 18px; border-radius: 17px; background: #eef2eb; }
+.lookupmodepanel h2 { margin: 6px 0 14px; font: 28px/1.08 Georgia, serif; }
+.lookupmodegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.lookupmodegrid button {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 13px 10px;
+  border: 1px solid #244b3920;
+  border-radius: 12px;
+  background: #fffdf8;
+  color: var(--green);
+  text-align: left;
+  cursor: pointer;
+}
+.lookupmodegrid button:hover { border-color: var(--coral); box-shadow: 0 7px 18px #263e3012; }
+.lookupmodegrid svg { flex: 0 0 auto; width: 20px; color: var(--coral); }
+.lookupmodegrid span { display: grid; gap: 3px; min-width: 0; }
+.lookupmodegrid b { font-size: 12px; line-height: 1.2; }
+.lookupmodegrid small { color: var(--muted); font-size: 10px; line-height: 1.3; }
+.hiddenfile { display: none !important; }
+.selectedsource { display: flex; align-items: center; gap: 10px; margin: 14px 0; padding: 12px; border-radius: 12px; background: #e7efe7; }
+.selectedsource svg { width: 18px; color: var(--green); }
+.selectedsource span { display: grid; gap: 2px; }
+.selectedsource small { color: var(--muted); }
 .uploadbox { display: flex; align-items: center; gap: 13px; margin: 15px 0; padding: 15px; border: 1px dashed #244b3960; border-radius: 13px; cursor: pointer; }
 .uploadbox svg { flex: 0 0 auto; }
 .uploadbox span { display: grid; gap: 3px; }
@@ -1489,10 +1537,16 @@ nav {
   }
 }
 @media (max-width: 800px) {
+  .contextlenscard { padding: 14px; }
+  .contextlensactions { gap: 6px; }
+  .contextlensactions button { padding: 10px 8px; }
   .lookuphero { margin: 28px 18px 22px; }
   .lookuphero h1 { font-size: 44px; }
   .lookupworkbench { grid-template-columns: 1fr; padding: 0 18px 50px; }
   .lookupinputs, .lookupresult { padding: 20px; }
+  .lookupmodepanel { margin: -5px -5px 20px; padding: 15px; }
+  .lookupmodegrid { grid-template-columns: 1fr; }
+  .lookupmodegrid button { align-items: center; padding: 12px; }
   .meaningpair { grid-template-columns: 1fr; }
   .termhead h2 { font-size: 44px; }
   .callstrip {

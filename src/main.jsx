@@ -7,24 +7,26 @@ import {
   Bell,
   BookOpen,
   CalendarPlus,
+  Camera,
   Check,
   ChevronLeft,
   CircleHelp,
   Clock3,
+  FileUp,
   Flame,
   Globe2,
+  Keyboard,
   Mic,
   Phone,
   PhoneCall,
   PhoneOff,
   Play,
   Repeat2,
+  ScanText,
   Send,
   Settings2,
   ShieldCheck,
   Sparkles,
-  Search,
-  Upload,
   Volume2,
   X,
 } from "lucide-react";
@@ -388,9 +390,9 @@ const coachApiUrl = () =>
     ? `${hostedCoachOrigin}/api/coach`
     : new URL(`${import.meta.env.BASE_URL}api/coach`, location.origin).href;
 const lookupApiUrl = () =>
-  location.hostname.endsWith("github.io")
-    ? `${hostedCoachOrigin}/api/lookup`
-    : new URL(`${import.meta.env.BASE_URL}api/lookup`, location.origin).href;
+  ["localhost", "127.0.0.1"].includes(location.hostname)
+    ? new URL(`${import.meta.env.BASE_URL}api/lookup`, location.origin).href
+    : `${publicRealtimeOrigin}/v1/luma/lookup`;
 const learnerApiUrl = () =>
   location.hostname.endsWith("github.io")
     ? `${hostedCoachOrigin}/api/learner`
@@ -1128,9 +1130,27 @@ function Home({
           <button type="button" className="primary" onClick={start}>
             Start my next best 3-minute mission <ArrowRight size={18} />
           </button>
-          <button type="button" className="contextlookupcta" onClick={lookup}>
-            <Search size={18} /> Explain a word from a screenshot, paper, or app
-          </button>
+          <section className="contextlenscard" aria-label="Context translation tools">
+            <div className="contextlensintro">
+              <span><ScanText /></span>
+              <div>
+                <b>Translate what’s in front of you</b>
+                <small>Get the meaning used here—not a dictionary guess.</small>
+              </div>
+              <ArrowRight />
+            </div>
+            <div className="contextlensactions">
+              <button type="button" onClick={lookup}>
+                <Keyboard /><b>Type or paste</b><small>Word or sentence</small>
+              </button>
+              <button type="button" onClick={lookup}>
+                <Camera /><b>Take a photo</b><small>Book, screen, sign</small>
+              </button>
+              <button type="button" onClick={lookup}>
+                <FileUp /><b>Upload a file</b><small>Image, TXT or MD</small>
+              </button>
+            </div>
+          </section>
           <div className="micro">
             <span>
               <Check />
@@ -2364,6 +2384,9 @@ function ContextLookup({ profile, back, save }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
+  const wordInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const chooseImage = (file) => {
     if (!file) return;
@@ -2382,6 +2405,33 @@ function ContextLookup({ profile, back, save }) {
       setNotice("Screenshot ready. Add a rough hint if you remember part of the word.");
     };
     reader.readAsDataURL(file);
+  };
+
+  const chooseFile = (file) => {
+    if (!file) return;
+    if (file.type.startsWith("image/")) {
+      chooseImage(file);
+      return;
+    }
+    const isText = ["text/plain", "text/markdown"].includes(file.type)
+      || /\.(txt|md)$/i.test(file.name);
+    if (!isText) {
+      setNotice("Choose an image, TXT, or Markdown file. PDF support is coming next.");
+      return;
+    }
+    if (file.size > 500_000) {
+      setNotice("Please choose a text file under 500 KB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const fileText = String(reader.result || "").slice(0, 4000);
+      setContext((current) => [current.trim(), fileText].filter(Boolean).join("\n\n"));
+      setImage("");
+      setImageName(file.name);
+      setNotice(`Loaded ${file.name}. Add a word hint or analyze the text as it is.`);
+    };
+    reader.readAsText(file);
   };
 
   const analyze = async () => {
@@ -2403,12 +2453,15 @@ function ContextLookup({ profile, back, save }) {
           nativeLanguage: profile?.nativeLanguage || "Mandarin Chinese",
         }),
       });
-      if (!response.ok) throw new Error("lookup failed");
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error?.message || `Context analysis failed (${response.status}).`);
+      }
       const data = await response.json();
       setResult(data);
       save?.(data);
       setNotice(`Saved “${data.term}” to your living memory. Luma will teach it again in a changed context.`);
-    } catch {
+    } catch (error) {
       const isVerdict = /verdi|判决/i.test(`${query} ${context}`);
       if (isVerdict) {
         const data = {
@@ -2432,7 +2485,7 @@ function ContextLookup({ profile, back, save }) {
         save?.(data);
         setNotice("Live analysis was unavailable, so Luma used its verified contextual fallback and saved the result.");
       } else {
-        setNotice("Context analysis is temporarily unavailable. Keep the pasted sentence and try again shortly.");
+        setNotice(error?.message || "Context analysis is temporarily unavailable. Keep the text and try again.");
       }
     } finally {
       setLoading(false);
@@ -2453,16 +2506,37 @@ function ContextLookup({ profile, back, save }) {
       </section>
       <section className="lookupworkbench">
         <div className="lookupinputs">
+          <div className="lookupmodepanel">
+            <span className="kicker">CHOOSE AN INPUT</span>
+            <h2>How do you want to bring it in?</h2>
+            <div className="lookupmodegrid">
+              <button type="button" onClick={() => wordInputRef.current?.focus()}>
+                <Keyboard />
+                <span><b>Type or paste</b><small>A word, sentence, or paragraph</small></span>
+              </button>
+              <button type="button" onClick={() => cameraInputRef.current?.click()}>
+                <Camera />
+                <span><b>Take a photo</b><small>Use your phone camera now</small></span>
+              </button>
+              <button type="button" onClick={() => fileInputRef.current?.click()}>
+                <FileUp />
+                <span><b>Upload a file</b><small>Image, TXT, or Markdown</small></span>
+              </button>
+            </div>
+            <input ref={cameraInputRef} className="hiddenfile" type="file" accept="image/*" capture="environment" onChange={(event) => chooseImage(event.target.files?.[0])} />
+            <input ref={fileInputRef} className="hiddenfile" type="file" accept="image/*,.txt,.md,text/plain,text/markdown" onChange={(event) => chooseFile(event.target.files?.[0])} />
+          </div>
           <label htmlFor="word-hint">Word or fuzzy hint</label>
-          <input id="word-hint" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. verdi… / sounds like ‘ver-dict’ / 判决那个词" />
+          <input ref={wordInputRef} id="word-hint" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. accum… / sounds like ‘ver-dict’ / 判决那个词" />
           <label htmlFor="word-context">Paste the surrounding sentence or paragraph</label>
           <textarea id="word-context" value={context} onChange={(event) => setContext(event.target.value)} placeholder="e.g. The signal aggregator returned a neutral verdict, so the strategy placed no order." />
-          <label className="uploadbox">
-            <Upload />
-            <span><b>{imageName || "Add a screenshot"}</b><small>Crop around the unfamiliar word for a faster, more accurate explanation.</small></span>
-            <input type="file" accept="image/*" capture="environment" onChange={(event) => chooseImage(event.target.files?.[0])} />
-          </label>
-          {image && <img className="lookuppreview" src={image} alt="Screenshot selected for contextual word analysis" />}
+          {imageName && (
+            <div className="selectedsource">
+              <Check />
+              <span><b>{imageName}</b><small>{image ? "Image ready for visual context analysis" : "Text loaded into the context field"}</small></span>
+            </div>
+          )}
+          {image && <img className="lookuppreview" src={image} alt="Selected source for contextual word analysis" />}
           <button type="button" className="primary full" onClick={analyze} disabled={loading}>
             <Sparkles /> {loading ? "Reading the context…" : "Explain what it means here"}
           </button>
