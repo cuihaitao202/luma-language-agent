@@ -1493,7 +1493,10 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     } else if (event.type === "input_audio_buffer.speech_stopped") {
       setStatus("Luma is understanding your meaning…");
     } else if (event.type === "conversation.item.input_audio_transcription.completed") {
-      setLearnerTranscript(event.transcript || "");
+      const transcript = String(event.transcript || "").trim();
+      if (transcript) {
+        setLearnerTranscript((value) => [value.trim(), transcript].filter(Boolean).join("\n").slice(-4000));
+      }
       setTurns((value) => value + 1);
     } else if (event.type === "response.output_audio_transcript.delta" || event.type === "response.audio_transcript.delta") {
       setCoachTranscript((value) => value + (event.delta || ""));
@@ -1561,7 +1564,8 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: false,
+          autoGainControl: true,
+          channelCount: 1,
         },
       });
       streamRef.current = stream;

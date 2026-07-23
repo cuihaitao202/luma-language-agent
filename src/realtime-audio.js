@@ -47,6 +47,8 @@ export class RealtimePcmAudio {
     this.silentGain = null;
     this.playing = new Set();
     this.nextPlayAt = 0;
+    this.playbackChain = Promise.resolve();
+    this.playbackGeneration = 0;
   }
 
   async start(stream) {
@@ -55,7 +57,9 @@ export class RealtimePcmAudio {
     this.inputContext = new AudioContext();
     await this.inputContext.resume();
     this.source = this.inputContext.createMediaStreamSource(stream);
-    this.processor = this.inputContext.createScriptProcessor(2048, 1, 1);
+    // About 85 ms at 48 kHz: fewer WebSocket frames on mobile without adding
+    // a noticeable turn-taking delay.
+    this.processor = this.inputContext.createScriptProcessor(4096, 1, 1);
     this.silentGain = this.inputContext.createGain();
     this.silentGain.gain.value = 0;
     this.processor.onaudioprocess = (event) => {
@@ -70,9 +74,19 @@ export class RealtimePcmAudio {
 
   async play(base64Audio) {
     if (!base64Audio) return;
+    const generation = this.playbackGeneration;
+    this.playbackChain = this.playbackChain
+      .catch(() => {})
+      .then(() => this.schedulePlayback(base64Audio, generation));
+    return this.playbackChain;
+  }
+
+  async schedulePlayback(base64Audio, generation) {
+    if (generation !== this.playbackGeneration) return;
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!this.outputContext) this.outputContext = new AudioContext();
     await this.outputContext.resume();
+    if (generation !== this.playbackGeneration) return;
     const pcm = base64ToPcm16(base64Audio);
     const buffer = this.outputContext.createBuffer(1, pcm.length, 24000);
     const channel = buffer.getChannelData(0);
@@ -80,7 +94,12 @@ export class RealtimePcmAudio {
     const node = this.outputContext.createBufferSource();
     node.buffer = buffer;
     node.connect(this.outputContext.destination);
-    const startsAt = Math.max(this.outputContext.currentTime + 0.01, this.nextPlayAt);
+    // Add a small lead only when playback starts or starves. This absorbs
+    // ordinary mobile-network jitter while keeping steady-state latency low.
+    if (this.nextPlayAt < this.outputContext.currentTime + 0.035) {
+      this.nextPlayAt = this.outputContext.currentTime + 0.075;
+    }
+    const startsAt = this.nextPlayAt;
     this.nextPlayAt = startsAt + buffer.duration;
     this.playing.add(node);
     node.onended = () => this.playing.delete(node);
@@ -88,6 +107,8 @@ export class RealtimePcmAudio {
   }
 
   interrupt() {
+    this.playbackGeneration += 1;
+    this.playbackChain = Promise.resolve();
     for (const node of this.playing) {
       try { node.stop(); } catch { /* already stopped */ }
     }
