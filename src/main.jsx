@@ -138,6 +138,36 @@ const languages = [
   { name: "Italian", hello: "Ciao" },
   { name: "Mandarin", hello: "你好" },
 ];
+const translationLanguages = [
+  "Simplified Chinese",
+  "Traditional Chinese",
+  "Mandarin Chinese",
+  "English",
+  "Japanese",
+  "Korean",
+  "Spanish",
+  "French",
+  "German",
+  "Italian",
+  "Portuguese",
+  "Arabic",
+  "Hindi",
+];
+const deviceExplanationLanguage = () => {
+  const locale = String(navigator.languages?.[0] || navigator.language || "").toLowerCase();
+  if (locale.startsWith("zh-tw") || locale.startsWith("zh-hk") || locale.includes("hant")) return "Traditional Chinese";
+  if (locale.startsWith("zh")) return "Simplified Chinese";
+  if (locale.startsWith("ja")) return "Japanese";
+  if (locale.startsWith("ko")) return "Korean";
+  if (locale.startsWith("es")) return "Spanish";
+  if (locale.startsWith("fr")) return "French";
+  if (locale.startsWith("de")) return "German";
+  if (locale.startsWith("it")) return "Italian";
+  if (locale.startsWith("pt")) return "Portuguese";
+  if (locale.startsWith("ar")) return "Arabic";
+  if (locale.startsWith("hi")) return "Hindi";
+  return "English";
+};
 const localeProfiles = {
   English: [
     { id: "en-US", label: "United States", audience: "workplace + social life" },
@@ -408,6 +438,8 @@ const realtimeApiUrl = (profile, scenario) => {
   url.searchParams.set("scenario", scenario);
   return url.href;
 };
+const realtimeWebrtcUrl = () =>
+  `${publicRealtimeOrigin}/v1/realtime/luma-webrtc`;
 const cloudIdentity = (enabled = false) => {
   if (!enabled) return null;
   let learnerId = localStorage.getItem("luma-cloud-learner-id");
@@ -1448,7 +1480,10 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const [turns, setTurns] = useState(0);
   const streamRef = useRef(null);
   const channelRef = useRef(null);
+  const peerRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const pcmAudioRef = useRef(null);
+  const fallbackStartedRef = useRef(false);
   const responseEndedAtRef = useRef(null);
   const responseLatencyRef = useRef(null);
   const scenario = socialScenario
@@ -1462,6 +1497,9 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       clearInterval(timer);
       navigator.vibrate?.(0);
       channelRef.current?.close();
+      peerRef.current?.close();
+      remoteAudioRef.current?.pause();
+      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
       pcmAudioRef.current?.close();
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
@@ -1469,6 +1507,9 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
 
   const endCall = () => {
     channelRef.current?.close();
+    peerRef.current?.close();
+    remoteAudioRef.current?.pause();
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     pcmAudioRef.current?.close();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     captureEvidence?.({
@@ -1555,10 +1596,150 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     }
   };
 
+  const connectWebSocketFallback = async (stream) => {
+    if (fallbackStartedRef.current) return;
+    fallbackStartedRef.current = true;
+    setStatus("Optimized direct audio was unavailable; connecting the backup voice path…");
+    const cloud = cloudIdentity(profile?.cloudLearning === true);
+    const sessionUrl = realtimeApiUrl(profile, scenario);
+    const headers = { "Content-Type": "application/json" };
+    if (cloud && new URL(sessionUrl).origin === location.origin) {
+      headers["X-Luma-Learner"] = cloud.cloudLearnerId;
+      headers["X-Luma-Secret"] = cloud.cloudSecret;
+    }
+    const response = await fetch(sessionUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ client: "luma-web" }),
+    });
+    if (!response.ok) throw new Error(`Backup live voice is unavailable (${response.status})`);
+    const session = await response.json();
+    if (!session?.url || !session?.instructions) throw new Error("The realtime gateway returned an incomplete session");
+    const channel = new WebSocket(session.url);
+    channelRef.current = channel;
+    const pcmAudio = new RealtimePcmAudio((audio) => {
+      if (channel.readyState === WebSocket.OPEN) {
+        channel.send(JSON.stringify({ type: "input_audio_buffer.append", audio }));
+      }
+    });
+    pcmAudioRef.current = pcmAudio;
+    channel.onmessage = (message) => {
+      try { handleEvent(JSON.parse(message.data)); } catch { /* ignore non-JSON events */ }
+    };
+    channel.onopen = async () => {
+      try {
+        await pcmAudio.start(stream);
+        channel.send(JSON.stringify({
+          type: "session.update",
+          session: { instructions: session.instructions, tools: session.tools || [] },
+        }));
+      } catch (error) {
+        setPhase("error");
+        setStatus(error?.message || "Could not start backup microphone streaming");
+        channel.close();
+      }
+    };
+    channel.onclose = (event) => {
+      pcmAudio.close();
+      if (event.code !== 1000) {
+        setPhase("error");
+        setStatus(event.reason || "The live audio connection was interrupted");
+      }
+    };
+    channel.onerror = () => setStatus("The backup voice connection was interrupted");
+  };
+
+  const waitForIce = (peer) => new Promise((resolve) => {
+    if (peer.iceGatheringState === "complete") return resolve();
+    const finish = () => {
+      peer.removeEventListener("icegatheringstatechange", check);
+      resolve();
+    };
+    const check = () => {
+      if (peer.iceGatheringState === "complete") finish();
+    };
+    peer.addEventListener("icegatheringstatechange", check);
+    setTimeout(finish, 3000);
+  });
+
+  const connectWebRtc = async (stream) => {
+    if (!window.RTCPeerConnection) throw new Error("WebRTC is unavailable");
+    const peer = new RTCPeerConnection({ iceServers: [] });
+    peerRef.current = peer;
+    stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+    peer.createDataChannel("oai-events");
+
+    let sessionUpdate = null;
+    let sessionUpdateSent = false;
+    let connected = false;
+    const sendSessionUpdate = () => {
+      const channel = channelRef.current;
+      if (sessionUpdateSent || !sessionUpdate || channel?.readyState !== "open") return;
+      sessionUpdateSent = true;
+      channel.send(JSON.stringify(sessionUpdate));
+    };
+
+    peer.ondatachannel = (event) => {
+      const channel = event.channel;
+      if (channel.label !== "txt") return;
+      channelRef.current = channel;
+      channel.onopen = () => setTimeout(sendSessionUpdate, 250);
+      channel.onmessage = async (message) => {
+        sendSessionUpdate();
+        try {
+          const raw = typeof message.data === "string" ? message.data : await message.data.text();
+          handleEvent(JSON.parse(raw));
+        } catch { /* ignore non-JSON events */ }
+      };
+    };
+    peer.ontrack = (event) => {
+      const audio = remoteAudioRef.current;
+      if (!audio) return;
+      audio.srcObject = event.streams[0] || new MediaStream([event.track]);
+      audio.play().catch(() => setStatus("Tap the audio button once to allow playback"));
+    };
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === "connected") {
+        connected = true;
+        setPhase("live");
+        setStatus("Live on the direct low-latency audio path");
+      } else if (peer.connectionState === "failed" && !fallbackStartedRef.current) {
+        peer.close();
+        connectWebSocketFallback(stream).catch((error) => {
+          setPhase("error");
+          setStatus(error?.message || "Could not start live audio");
+        });
+      } else if (peer.connectionState === "disconnected" && connected) {
+        setStatus("Mobile network changed; restoring the audio path…");
+      }
+    };
+
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    await waitForIce(peer);
+    const response = await fetch(realtimeWebrtcUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sdp: peer.localDescription?.sdp,
+        target: profile?.target || "Spanish",
+        native: profile?.nativeLanguage || "English",
+        scenario,
+      }),
+    });
+    if (!response.ok) throw new Error(`Direct voice signaling failed (${response.status})`);
+    const session = await response.json();
+    if (!session?.sdp || !session?.sessionUpdate) throw new Error("Direct voice signaling returned incomplete data");
+    sessionUpdate = session.sessionUpdate;
+    await peer.setRemoteDescription({ type: "answer", sdp: session.sdp });
+    sendSessionUpdate();
+  };
+
   const answer = async () => {
     setPhase("connecting");
-    setStatus("Connecting secure live audio…");
+    setStatus("Connecting direct low-latency audio…");
     navigator.vibrate?.(0);
+    fallbackStartedRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -1569,69 +1750,16 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
         },
       });
       streamRef.current = stream;
-      const cloud = cloudIdentity(profile?.cloudLearning === true);
-      const sessionUrl = realtimeApiUrl(profile, scenario);
-      const headers = { "Content-Type": "application/json" };
-      if (cloud && new URL(sessionUrl).origin === location.origin) {
-        headers["X-Luma-Learner"] = cloud.cloudLearnerId;
-        headers["X-Luma-Secret"] = cloud.cloudSecret;
+      try {
+        await connectWebRtc(stream);
+      } catch {
+        peerRef.current?.close();
+        await connectWebSocketFallback(stream);
       }
-      const response = await fetch(sessionUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ client: "luma-web" }),
-      });
-      if (!response.ok) {
-        let detail = "";
-        try {
-          const payload = await response.clone().json();
-          detail = payload?.detail || payload?.error || "";
-        } catch {
-          detail = await response.text().catch(() => "");
-        }
-        throw new Error(
-          detail
-            ? `Live voice service is unavailable (${response.status}): ${String(detail).slice(0, 180)}`
-            : `Live voice service is unavailable (${response.status})`,
-        );
-      }
-      const session = await response.json();
-      if (!session?.url || !session?.instructions) throw new Error("The realtime gateway returned an incomplete session");
-      const channel = new WebSocket(session.url);
-      channelRef.current = channel;
-      const pcmAudio = new RealtimePcmAudio((audio) => {
-        if (channel.readyState === WebSocket.OPEN) {
-          channel.send(JSON.stringify({ type: "input_audio_buffer.append", audio }));
-        }
-      });
-      pcmAudioRef.current = pcmAudio;
-      channel.onmessage = (message) => {
-        try { handleEvent(JSON.parse(message.data)); } catch { /* ignore non-JSON events */ }
-      };
-      channel.onopen = async () => {
-        try {
-          await pcmAudio.start(stream);
-          channel.send(JSON.stringify({
-            type: "session.update",
-            session: { instructions: session.instructions, tools: session.tools || [] },
-          }));
-        } catch (error) {
-          setPhase("error");
-          setStatus(error?.message || "Could not start microphone streaming");
-          channel.close();
-        }
-      };
-      channel.onclose = (event) => {
-        pcmAudio.close();
-        if (event.code !== 1000) {
-          setPhase("error");
-          setStatus(event.reason || "The live audio connection was interrupted");
-        }
-      };
-      channel.onerror = () => setStatus("The realtime gateway connection was interrupted");
       navigator.wakeLock?.request?.("screen").catch(() => {});
     } catch (error) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      peerRef.current?.close();
       pcmAudioRef.current?.close();
       setPhase("error");
       setStatus(error?.message || "Could not start live audio");
@@ -1656,6 +1784,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
 
   return (
     <div className="incoming calllive">
+      <audio ref={remoteAudioRef} autoPlay playsInline />
       <div className="livehead">
         <span className="pulse"></span>
         <b>Luma · realtime audio</b>
@@ -2380,6 +2509,34 @@ function Lesson({
   );
 }
 
+const prepareLookupImage = (file) => new Promise((resolve, reject) => {
+  const objectUrl = URL.createObjectURL(file);
+  const source = new Image();
+  source.onload = () => {
+    try {
+      const maxEdge = 1600;
+      const scale = Math.min(1, maxEdge / Math.max(source.naturalWidth, source.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(source.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(source.naturalHeight * scale));
+      const context = canvas.getContext("2d", { alpha: false });
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(source, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.8));
+    } catch (error) {
+      reject(error);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
+  source.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    reject(new Error("This image could not be read"));
+  };
+  source.src = objectUrl;
+});
+
 function ContextLookup({ profile, back, save }) {
   const [query, setQuery] = useState("");
   const [context, setContext] = useState("");
@@ -2388,27 +2545,33 @@ function ContextLookup({ profile, back, save }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
+  const [translationLanguage, setTranslationLanguage] = useState(() =>
+    localStorage.getItem("luma-translation-language")
+      || (profile?.nativeLanguage && profile.nativeLanguage !== "English" ? profile.nativeLanguage : deviceExplanationLanguage()),
+  );
   const wordInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const chooseImage = (file) => {
+  const chooseImage = async (file) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setNotice("Please choose a screenshot or photo.");
       return;
     }
-    if (file.size > 4_000_000) {
-      setNotice("Please crop the screenshot or choose an image under 4 MB.");
+    if (file.size > 12_000_000) {
+      setNotice("Please choose an image under 12 MB.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImage(String(reader.result || ""));
+    setNotice("Optimizing the image for fast translation…");
+    try {
+      const prepared = await prepareLookupImage(file);
+      setImage(prepared);
       setImageName(file.name);
-      setNotice("Screenshot ready. Add a rough hint if you remember part of the word.");
-    };
-    reader.readAsDataURL(file);
+      setNotice("Image ready. It was compressed on your phone for a faster result.");
+    } catch (error) {
+      setNotice(error?.message || "This image could not be read.");
+    }
   };
 
   const chooseFile = (file) => {
@@ -2444,7 +2607,8 @@ function ContextLookup({ profile, back, save }) {
       return;
     }
     setLoading(true);
-    setNotice("");
+    const startedAt = performance.now();
+    setNotice(image ? "Reading and translating the image…" : "Finding the meaning…");
     try {
       const response = await fetch(lookupApiUrl(), {
         method: "POST",
@@ -2454,7 +2618,7 @@ function ContextLookup({ profile, back, save }) {
           context: context.trim(),
           image,
           targetLanguage: profile?.target || "English",
-          nativeLanguage: profile?.nativeLanguage || "Mandarin Chinese",
+          nativeLanguage: translationLanguage,
         }),
       });
       if (!response.ok) {
@@ -2464,7 +2628,7 @@ function ContextLookup({ profile, back, save }) {
       const data = await response.json();
       setResult(data);
       save?.(data);
-      setNotice(`Saved “${data.term}” to your living memory. Luma will teach it again in a changed context.`);
+      setNotice(`Done in ${((performance.now() - startedAt) / 1000).toFixed(1)}s · translated into ${translationLanguage}.`);
     } catch (error) {
       const isVerdict = /verdi|判决/i.test(`${query} ${context}`);
       if (isVerdict) {
@@ -2530,6 +2694,26 @@ function ContextLookup({ profile, back, save }) {
             <input ref={cameraInputRef} className="hiddenfile" type="file" accept="image/*" capture="environment" onChange={(event) => chooseImage(event.target.files?.[0])} />
             <input ref={fileInputRef} className="hiddenfile" type="file" accept="image/*,.txt,.md,text/plain,text/markdown" onChange={(event) => chooseFile(event.target.files?.[0])} />
           </div>
+          <div className="translationchoice">
+            <Globe2 />
+            <label htmlFor="translation-language">
+              <b>Translate explanations into</b>
+              <small>Automatically follows this phone; change it anytime.</small>
+            </label>
+            <select
+              id="translation-language"
+              value={translationLanguage}
+              onChange={(event) => {
+                setTranslationLanguage(event.target.value);
+                localStorage.setItem("luma-translation-language", event.target.value);
+              }}
+            >
+              {!translationLanguages.includes(translationLanguage) && (
+                <option value={translationLanguage}>{translationLanguage}</option>
+              )}
+              {translationLanguages.map((language) => <option key={language} value={language}>{language}</option>)}
+            </select>
+          </div>
           <label htmlFor="word-hint">Word or fuzzy hint</label>
           <input ref={wordInputRef} id="word-hint" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. accum… / sounds like ‘ver-dict’ / 判决那个词" />
           <label htmlFor="word-context">Paste the surrounding sentence or paragraph</label>
@@ -2542,7 +2726,7 @@ function ContextLookup({ profile, back, save }) {
           )}
           {image && <img className="lookuppreview" src={image} alt="Selected source for contextual word analysis" />}
           <button type="button" className="primary full" onClick={analyze} disabled={loading}>
-            <Sparkles /> {loading ? "Reading the context…" : "Explain what it means here"}
+            <Sparkles /> {loading ? (image ? "Reading + translating image…" : "Finding the meaning…") : "Explain what it means here"}
           </button>
           {notice && <p className="lookupnotice">{notice}</p>}
         </div>
@@ -2552,7 +2736,7 @@ function ContextLookup({ profile, back, save }) {
           ) : (
             <>
               <div className="termhead"><div><span>{result.detectedDomain}</span><h2>{result.term}</h2></div><b>{result.confidence} confidence</b></div>
-              <article className="meaningprimary"><span>在这个语境里的意思</span><h3>{result.contextualMeaning}</h3><p>{result.nativeExplanation}</p></article>
+              <article className="meaningprimary"><span>Meaning in {translationLanguage}</span><h3>{result.contextualMeaning}</h3><p>{result.nativeExplanation}</p></article>
               <div className="meaningpair"><article><span>Plain {profile?.target || "language"}</span><p>{result.plainExplanation}</p></article><article><span>Dictionary ≠ context</span><p>{result.dictionaryContrast}</p></article></div>
               <article><span className="resultlabel">Natural example</span><p className="exampleline">{result.naturalExample}</p></article>
               <article><span className="resultlabel">Words it naturally travels with</span><div className="collocations">{result.commonCollocations?.map((item) => <span key={item}>{item}</span>)}</div></article>
