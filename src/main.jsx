@@ -413,16 +413,19 @@ const publicCallUrl = () =>
   `${location.origin}${location.pathname}?coachCall=1`;
 const hostedCoachOrigin =
   "https://luma-language-agent.taotao918918918.chatgpt.site";
-const publicRealtimeOrigin = "https://sg.api.aimodelapi.ai";
+const publicRealtimeOrigin = "https://api.aimodelapi.ai";
 const practiceSessionId = crypto.randomUUID();
 const coachApiUrl = () =>
   location.hostname.endsWith("github.io")
     ? `${hostedCoachOrigin}/api/coach`
     : new URL(`${import.meta.env.BASE_URL}api/coach`, location.origin).href;
-const lookupApiUrl = () =>
+const lookupApiUrls = () =>
   ["localhost", "127.0.0.1"].includes(location.hostname)
-    ? new URL(`${import.meta.env.BASE_URL}api/lookup`, location.origin).href
-    : `${publicRealtimeOrigin}/v1/luma/lookup`;
+    ? [new URL(`${import.meta.env.BASE_URL}api/lookup`, location.origin).href]
+    : [
+        `${publicRealtimeOrigin}/v1/luma/lookup`,
+        "https://sg.api.aimodelapi.ai/v1/luma/lookup",
+      ];
 const learnerApiUrl = () =>
   location.hostname.endsWith("github.io")
     ? `${hostedCoachOrigin}/api/learner`
@@ -2610,7 +2613,7 @@ function ContextLookup({ profile, back, save }) {
     const startedAt = performance.now();
     setNotice(image ? "Reading and translating the image…" : "Finding the meaning…");
     try {
-      const response = await fetch(lookupApiUrl(), {
+      const request = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2620,7 +2623,18 @@ function ContextLookup({ profile, back, save }) {
           targetLanguage: profile?.target || "English",
           nativeLanguage: translationLanguage,
         }),
-      });
+      };
+      let response = null;
+      let networkError = null;
+      for (const endpoint of lookupApiUrls()) {
+        try {
+          response = await fetch(endpoint, request);
+          if (response.ok || response.status < 500) break;
+        } catch (error) {
+          networkError = error;
+        }
+      }
+      if (!response) throw networkError || new Error("The translation service could not be reached.");
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload?.error?.message || `Context analysis failed (${response.status}).`);
