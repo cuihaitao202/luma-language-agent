@@ -17,6 +17,7 @@ import {
   Globe2,
   Keyboard,
   Mic,
+  MicOff,
   Phone,
   PhoneCall,
   PhoneOff,
@@ -1481,6 +1482,10 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const [learnerTranscript, setLearnerTranscript] = useState("");
   const [coachTranscript, setCoachTranscript] = useState("");
   const [turns, setTurns] = useState(0);
+  const [micLevel, setMicLevel] = useState(0);
+  const [micActive, setMicActive] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const [transport, setTransport] = useState("webrtc");
   const streamRef = useRef(null);
   const channelRef = useRef(null);
   const peerRef = useRef(null);
@@ -1489,6 +1494,11 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const fallbackStartedRef = useRef(false);
   const responseEndedAtRef = useRef(null);
   const responseLatencyRef = useRef(null);
+  const micMonitorRef = useRef(null);
+  const localSpeechStartedAtRef = useRef(null);
+  const upstreamWatchdogRef = useRef(null);
+  const expectingUserRef = useRef(false);
+  const transportRef = useRef("webrtc");
   const scenario = socialScenario
     ? `${socialScenario.title}; relationship: ${socialScenario.relationship}; channel: ${socialScenario.channel}; challenge: ${socialScenario.pressure}; mission: ${socialScenario.mission || "complete a meaningful exchange"}`
     : `a spontaneous call before work about ${profile?.domain || "the learner's real day"}`;
@@ -1504,6 +1514,9 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       remoteAudioRef.current?.pause();
       if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
       pcmAudioRef.current?.close();
+      if (upstreamWatchdogRef.current) clearTimeout(upstreamWatchdogRef.current);
+      if (micMonitorRef.current?.frame) cancelAnimationFrame(micMonitorRef.current.frame);
+      micMonitorRef.current?.context?.close().catch(() => {});
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
@@ -1514,6 +1527,9 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     remoteAudioRef.current?.pause();
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     pcmAudioRef.current?.close();
+    if (upstreamWatchdogRef.current) clearTimeout(upstreamWatchdogRef.current);
+    if (micMonitorRef.current?.frame) cancelAnimationFrame(micMonitorRef.current.frame);
+    micMonitorRef.current?.context?.close().catch(() => {});
     streamRef.current?.getTracks().forEach((track) => track.stop());
     captureEvidence?.({
       skill: "speaking",
@@ -1531,6 +1547,12 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
 
   const handleEvent = (event) => {
     if (event.type === "input_audio_buffer.speech_started") {
+      expectingUserRef.current = false;
+      localSpeechStartedAtRef.current = null;
+      if (upstreamWatchdogRef.current) {
+        clearTimeout(upstreamWatchdogRef.current);
+        upstreamWatchdogRef.current = null;
+      }
       pcmAudioRef.current?.interrupt();
       if (responseEndedAtRef.current) responseLatencyRef.current = Date.now() - responseEndedAtRef.current;
       setStatus("You’re speaking — Luma is listening");
@@ -1550,6 +1572,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       setStatus("Luma is responding…");
     } else if (event.type === "response.done") {
       responseEndedAtRef.current = Date.now();
+      expectingUserRef.current = true;
       setStatus("Your turn — take your time, pauses are okay");
     } else if (event.type === "response.audio.delta") {
       pcmAudioRef.current?.play(event.delta).catch(() => {});
@@ -1602,6 +1625,8 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const connectWebSocketFallback = async (stream) => {
     if (fallbackStartedRef.current) return;
     fallbackStartedRef.current = true;
+    transportRef.current = "websocket";
+    setTransport("websocket");
     setStatus("Optimized direct audio was unavailable; connecting the backup voice path…");
     const cloud = cloudIdentity(profile?.cloudLearning === true);
     const sessionUrl = realtimeApiUrl(profile, scenario);
@@ -1650,6 +1675,87 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       }
     };
     channel.onerror = () => setStatus("The backup voice connection was interrupted");
+  };
+
+  const switchToCompatibilityMic = async () => {
+    if (fallbackStartedRef.current || !streamRef.current) return;
+    if (upstreamWatchdogRef.current) {
+      clearTimeout(upstreamWatchdogRef.current);
+      upstreamWatchdogRef.current = null;
+    }
+    expectingUserRef.current = false;
+    setPhase("connecting");
+    setStatus("The direct path did not hear you; switching microphone transport…");
+    channelRef.current?.close();
+    channelRef.current = null;
+    peerRef.current?.close();
+    peerRef.current = null;
+    remoteAudioRef.current?.pause();
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+    try {
+      await connectWebSocketFallback(streamRef.current);
+    } catch (error) {
+      setPhase("error");
+      setStatus(error?.message || "Could not reconnect the microphone");
+    }
+  };
+
+  const startMicMonitor = async (stream) => {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const context = new AudioContext();
+    await context.resume();
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.7;
+    source.connect(analyser);
+    const samples = new Uint8Array(analyser.fftSize);
+    const monitor = { context, source, analyser, samples, frame: null, active: false };
+    micMonitorRef.current = monitor;
+
+    const sample = () => {
+      analyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (const value of samples) {
+        const normalized = (value - 128) / 128;
+        sum += normalized * normalized;
+      }
+      const rms = Math.sqrt(sum / samples.length);
+      const level = Math.min(1, rms * 9);
+      const active = rms > 0.025;
+      setMicLevel(level);
+      if (active !== monitor.active) {
+        monitor.active = active;
+        setMicActive(active);
+      }
+
+      if (active && transportRef.current === "webrtc" && expectingUserRef.current) {
+        if (!localSpeechStartedAtRef.current) localSpeechStartedAtRef.current = Date.now();
+        if (Date.now() - localSpeechStartedAtRef.current > 650 && !upstreamWatchdogRef.current) {
+          upstreamWatchdogRef.current = setTimeout(() => {
+            upstreamWatchdogRef.current = null;
+            if (transportRef.current === "webrtc" && expectingUserRef.current) {
+              switchToCompatibilityMic();
+            }
+          }, 1800);
+        }
+      }
+      monitor.frame = requestAnimationFrame(sample);
+    };
+    sample();
+  };
+
+  const toggleMic = () => {
+    const track = streamRef.current?.getAudioTracks?.()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    setMicMuted(!track.enabled);
+    if (track.enabled) {
+      setStatus("Microphone is on — speak normally");
+    } else {
+      setStatus("Microphone muted");
+    }
   };
 
   const waitForIce = (peer) => new Promise((resolve) => {
@@ -1704,6 +1810,8 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === "connected") {
         connected = true;
+        transportRef.current = "webrtc";
+        setTransport("webrtc");
         setPhase("live");
         setStatus("Live on the direct low-latency audio path");
       } else if (peer.connectionState === "failed" && !fallbackStartedRef.current) {
@@ -1753,6 +1861,10 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
         },
       });
       streamRef.current = stream;
+      const audioTrack = stream.getAudioTracks()[0];
+      if (!audioTrack || audioTrack.readyState !== "live") throw new Error("The microphone did not provide a live audio track");
+      audioTrack.enabled = true;
+      await startMicMonitor(stream);
       try {
         await connectWebRtc(stream);
       } catch {
@@ -1808,9 +1920,26 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
           </div>
         )}
         <div className="callpromise">
-          <Mic />
-          <span><b>{phase === "live" ? "Microphone live" : phase === "connecting" ? "Connecting…" : "Connection unavailable"}</b><small>Audio is sent continuously during this call. Conversation text is saved only under your separate corpus consent.</small></span>
+          <button
+            type="button"
+            className={`miccontrol ${micMuted ? "muted" : ""}`}
+            onClick={toggleMic}
+            disabled={phase === "connecting"}
+            aria-label={micMuted ? "Turn microphone on" : "Mute microphone"}
+          >
+            {micMuted ? <MicOff /> : <Mic />}
+          </button>
+          <span>
+            <b>{phase === "live" ? micMuted ? "Microphone muted" : micActive ? "We can hear you" : "Microphone on — start speaking" : phase === "connecting" ? "Connecting microphone…" : "Connection unavailable"}</b>
+            <span className="miclevel" aria-hidden="true"><i style={{ width: `${micMuted ? 0 : Math.max(4, micLevel * 100)}%` }} /></span>
+            <small>{transport === "websocket" ? "Compatibility microphone is active." : "Direct microphone is active."} Tap the microphone icon to mute or unmute.</small>
+          </span>
         </div>
+        {phase === "live" && transport === "webrtc" && (
+          <button className="textbtn micfallback" onClick={switchToCompatibilityMic}>
+            Microphone not responding? Use compatibility mode
+          </button>
+        )}
         {phase === "error" && <button className="secondary full" onClick={useFallback}>Use transcript fallback</button>}
         <button className="decline full" onClick={endCall}><PhoneOff /><span>End call</span></button>
       </section>

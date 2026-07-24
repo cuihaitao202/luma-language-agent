@@ -989,9 +989,26 @@ nav {
   flex-shrink: 0;
   color: var(--green);
 }
+.callpromise .miccontrol {
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(27, 83, 61, 0.2);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.callpromise .miccontrol.muted {
+  background: rgba(232, 99, 73, 0.12);
+}
+.callpromise .miccontrol.muted svg {
+  color: var(--coral);
+}
 .callpromise span {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 .callpromise b {
   font-size: 11px;
@@ -1001,6 +1018,26 @@ nav {
   color: var(--muted);
   line-height: 1.4;
   margin-top: 3px;
+}
+.callpromise .miclevel {
+  display: block;
+  width: 100%;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(27, 83, 61, 0.12);
+}
+.callpromise .miclevel i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transition: width 90ms linear;
+}
+.micfallback {
+  width: 100%;
+  margin-top: -8px;
+  text-align: center;
 }
 .setupclose {
   position: absolute;
