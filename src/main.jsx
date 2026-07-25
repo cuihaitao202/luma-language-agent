@@ -169,6 +169,22 @@ const deviceExplanationLanguage = () => {
   if (locale.startsWith("hi")) return "Hindi";
   return "English";
 };
+const speechLocaleForLanguage = (language) => ({
+  English: "en-US",
+  Spanish: "es-ES",
+  French: "fr-FR",
+  Japanese: "ja-JP",
+  Korean: "ko-KR",
+  German: "de-DE",
+  Italian: "it-IT",
+  Mandarin: "zh-CN",
+  "Mandarin Chinese": "zh-CN",
+  "Simplified Chinese": "zh-CN",
+  "Traditional Chinese": "zh-TW",
+  Portuguese: "pt-BR",
+  Arabic: "ar-SA",
+  Hindi: "hi-IN",
+}[language] || "en-US");
 const localeProfiles = {
   English: [
     { id: "en-US", label: "United States", audience: "workplace + social life" },
@@ -2677,6 +2693,7 @@ function ContextLookup({ profile, back, save }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
+  const [speakingTerm, setSpeakingTerm] = useState(false);
   const [translationLanguage, setTranslationLanguage] = useState(() =>
     localStorage.getItem("luma-translation-language")
       || (profile?.nativeLanguage && profile.nativeLanguage !== "English" ? profile.nativeLanguage : deviceExplanationLanguage()),
@@ -2684,6 +2701,34 @@ function ContextLookup({ profile, back, save }) {
   const wordInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const speakTerm = () => {
+    if (!result) return;
+    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+      setNotice("Audio pronunciation is not available in this browser.");
+      return;
+    }
+    const pronunciationText = String(
+      result.pronunciationText || result.term || "",
+    ).split("/")[0].trim();
+    if (!pronunciationText) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(pronunciationText);
+    utterance.lang = speechLocaleForLanguage(profile?.target || "English");
+    utterance.rate = 0.78;
+    const languagePrefix = utterance.lang.split("-")[0].toLowerCase();
+    const matchingVoice = window.speechSynthesis
+      .getVoices()
+      .find((voice) => voice.lang.toLowerCase().startsWith(languagePrefix));
+    if (matchingVoice) utterance.voice = matchingVoice;
+    utterance.onstart = () => setSpeakingTerm(true);
+    utterance.onend = () => setSpeakingTerm(false);
+    utterance.onerror = () => {
+      setSpeakingTerm(false);
+      setNotice("Pronunciation playback was interrupted. Tap the speaker to try again.");
+    };
+    window.speechSynthesis.speak(utterance);
+  };
 
   const chooseImage = async (file) => {
     if (!file) return;
@@ -2777,6 +2822,9 @@ function ContextLookup({ profile, back, save }) {
       if (isVerdict) {
         const data = {
           term: "verdict",
+          pronunciationText: "verdict",
+          phonetic: "/ˈvɜːrdɪkt/",
+          pronunciation: "重音在第一个音节：VER-dict；结尾的 /kt/ 要清楚但不要额外加元音。",
           sourceText: context,
           detectedDomain: "quantitative trading / software output",
           nativeExplanation: "这里通常不是法院的“判决”，而是模型或系统综合证据后给出的最终判断、分类结果或结论。具体是买入、卖出、看多、看空还是通过/拒绝，要看附近字段。",
@@ -2878,7 +2926,20 @@ function ContextLookup({ profile, back, save }) {
             <div className="emptylookup"><BookOpen /><h2>Context changes meaning.</h2><p><b>verdict</b> can mean a court decision—or a model’s final decision in a quantitative system. Luma uses the surrounding evidence first.</p></div>
           ) : (
             <>
-              <div className="termhead"><div><span>{result.detectedDomain}</span><h2>{result.term}</h2></div><b>{result.confidence} confidence</b></div>
+              <div className="termhead">
+                <div>
+                  <span>{result.detectedDomain}</span>
+                  <h2>{result.term}</h2>
+                  <div className="pronunciationrow">
+                    <button type="button" onClick={speakTerm} aria-label={`Play pronunciation of ${result.pronunciationText || result.term}`}>
+                      <Volume2 /> {speakingTerm ? "Playing…" : "Listen"}
+                    </button>
+                    {result.phonetic && <strong>{result.phonetic}</strong>}
+                  </div>
+                  {result.pronunciation && <p className="pronunciationtip">{result.pronunciation}</p>}
+                </div>
+                <b>{result.confidence} confidence</b>
+              </div>
               <article className="meaningprimary"><span>Meaning in {translationLanguage}</span><h3>{result.contextualMeaning}</h3><p>{result.nativeExplanation}</p></article>
               <div className="meaningpair"><article><span>Plain {profile?.target || "language"}</span><p>{result.plainExplanation}</p></article><article><span>Dictionary ≠ context</span><p>{result.dictionaryContrast}</p></article></div>
               <article><span className="resultlabel">Natural example</span><p className="exampleline">{result.naturalExample}</p></article>

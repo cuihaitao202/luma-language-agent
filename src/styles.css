@@ -1562,6 +1562,12 @@ nav {
 .termhead span, .resultlabel, .meaningprimary > span, .meaningpair span, .retrievalcard > span { color: var(--coral); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .termhead h2 { margin: 3px 0 18px; font: 58px/1 Georgia, serif; }
 .termhead > b { padding: 7px 10px; border-radius: 30px; background: var(--sage); font-size: 11px; text-transform: uppercase; }
+.pronunciationrow { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: -8px 0 8px; }
+.pronunciationrow button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid #e26b4a55; border-radius: 999px; background: #fff3ed; color: var(--green); font-weight: 800; cursor: pointer; }
+.pronunciationrow button:hover { border-color: var(--coral); }
+.pronunciationrow button svg { width: 18px; color: var(--coral); }
+.pronunciationrow strong { font: 19px/1.2 Georgia, serif; color: var(--green); }
+.termhead .pronunciationtip { max-width: 560px; margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .meaningprimary { padding: 22px; border-radius: 16px; background: var(--green); color: white; }
 .meaningprimary h3 { margin: 8px 0; font-size: 24px; }
 .meaningprimary p { margin-bottom: 0; line-height: 1.6; }

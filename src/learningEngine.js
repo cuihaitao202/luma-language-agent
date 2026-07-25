@@ -225,6 +225,9 @@ export function saveContextualLookup(model, lookup, now = Date.now()) {
   };
   existing.term = term;
   existing.lookup = {
+    pronunciationText: String(lookup.pronunciationText || term),
+    phonetic: String(lookup.phonetic || ""),
+    pronunciation: String(lookup.pronunciation || ""),
     sourceText: String(lookup.sourceText || "").slice(0, 800),
     detectedDomain: domain,
     nativeExplanation: String(lookup.nativeExplanation || ""),
