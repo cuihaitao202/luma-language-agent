@@ -1587,6 +1587,13 @@ nav {
 .lookupreviewsource small { color: var(--muted); line-height: 1.45; }
 .lookupgrade { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
 .lookupgrade button { min-height: 50px; }
+.choicequestion { grid-column: 1 / -1; margin: 0 0 2px; color: var(--muted); font-weight: 750; text-align: left; }
+.missionmoves { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px auto 20px; }
+.missionmoves span { padding: 8px 11px; border-radius: 999px; background: var(--sage); color: var(--green); font-size: 12px; font-weight: 750; }
+.languageframe { width: min(680px, 100%); margin: 14px auto 0; padding: 17px; border: 1px solid #e26b4a55; border-radius: 14px; background: #fff3ed; text-align: left; }
+.languageframe span { color: var(--coral); font-size: 10px; font-weight: 850; letter-spacing: .1em; }
+.languageframe p { margin: 7px 0; color: var(--green); font: 19px/1.45 Georgia, serif; }
+.languageframe small { color: var(--muted); line-height: 1.45; }
 @keyframes callpulse {
   50% {
     box-shadow: 0 0 0 18px #49a96722;

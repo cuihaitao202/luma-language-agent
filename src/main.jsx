@@ -40,6 +40,7 @@ import {
   recordEvidence,
   saveContextualLookup,
 } from "./learningEngine.js";
+import { assessComplexEnglish, selectDailyMission } from "./dailyMissions.js";
 
 const scenes = [
   {
@@ -1163,6 +1164,7 @@ function Home({
   forgetCloudLearning,
 }) {
   const action = nextBestAction(learnerModel);
+  const todayMission = selectDailyMission(localDay(), profile?.target || "Spanish");
   return (
     <main className="shell">
       <nav>
@@ -1194,7 +1196,7 @@ function Home({
             your brain remembers—without word lists or homework.
           </p>
           <button type="button" className="primary" onClick={start}>
-            Start my next best 3-minute mission <ArrowRight size={18} />
+            {todayMission ? `Today: ${todayMission.scene} · 3 min` : "Start my next best 3-minute mission"} <ArrowRight size={18} />
           </button>
           <section className="contextlenscard" aria-label="Context translation tools">
             <div className="contextlensintro">
@@ -2421,8 +2423,29 @@ function Lesson({
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(false);
   const [validation, setValidation] = useState("");
+  const [showFrame, setShowFrame] = useState(false);
   const answerRef = useRef(null);
   const copy = practiceContent[profile?.target] || practiceContent.Spanish;
+  const selectedMission = selectDailyMission(localDay(), profile?.target || "Spanish");
+  const mission = selectedMission || {
+    id: "coffee-request",
+    scene: "Coffee shop",
+    role: "You are ordering before work",
+    pressure: "The line is moving quickly.",
+    opening: copy.hear,
+    listeningQuestion: "What choice is the other person asking you to make?",
+    choice: copy.choice,
+    alternative: copy.alternative,
+    task: "Make a clear, natural request.",
+    prompt: "Say what you want, add one preference, and make the request polite.",
+    moves: ["state what you want", "add one preference", "make it polite"],
+    frame: copy.prompt,
+    model: copy.prompt,
+    refinement: copy.refinement,
+    chunk: copy.chunk,
+    intent: "make a polite request",
+    changedContext: "a different service encounter",
+  };
   const mins = String(Math.floor(seconds / 60));
   const secs = String(seconds % 60).padStart(2, "0");
   const advance = () => setStep((s) => Math.min(3, s + 1));
@@ -2434,6 +2457,19 @@ function Lesson({
       answerRef.current?.focus();
       return;
     }
+    if (profile?.target === "English") {
+      const depth = assessComplexEnglish(spoken);
+      if (!depth.ready) {
+        setShowFrame(true);
+        setValidation(
+          depth.escape
+            ? "A one-line escape cannot complete this mission. Add your position, one reason, and a consequence or example."
+            : `Build this into a real answer: add ${depth.missing.join(" and ")}.`,
+        );
+        answerRef.current?.focus();
+        return;
+      }
+    }
     setValidation("");
     setLoading(true);
     try {
@@ -2442,7 +2478,7 @@ function Lesson({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           targetLanguage: profile?.target || "Spanish",
-          scenario: "ordering coffee before a work meeting",
+          scenario: `${mission.scene}. ${mission.role}. ${mission.pressure} The learner must ${mission.intent}.`,
           utterance: spoken,
           nativeLanguage: profile?.nativeLanguage || "English",
           learnerModel: learnerSnapshot(learnerModel),
@@ -2456,20 +2492,23 @@ function Lesson({
       setFeedback({
         understood: true,
         praise: "You were completely understood.",
-        refinement: copy.refinement,
-        naturalVersion: copy.prompt,
+        refinement: mission.refinement,
+        naturalVersion: mission.model,
         memoryHook:
-          "Luma will reuse this request frame tomorrow in a new real-life situation.",
+          `Luma will reuse this language move in ${mission.changedContext}.`,
       });
     } finally {
+      const depth = profile?.target === "English" ? assessComplexEnglish(spoken) : null;
       captureEvidence?.({
         skill: "speaking",
-        score: 0.78,
-        hesitation: spoken.trim() === copy.prompt ? 0.05 : 0.18,
-        memoryKey: copy.chunk,
-        phrase: copy.chunk,
-        intent: "make a polite request",
-        context: "coffee shop",
+        score: depth ? Math.min(0.92, 0.72 + depth.wordCount / 120) : 0.78,
+        hesitation: spoken.trim() === mission.model ? 0.05 : 0.16,
+        transfer: true,
+        memoryKey: `mission:${mission.id}:${mission.chunk}`,
+        phrase: mission.chunk,
+        intent: mission.intent,
+        context: mission.scene,
+        strategy: "position-reason-evidence-transfer",
       });
       setLoading(false);
       advance();
@@ -2616,21 +2655,21 @@ function Lesson({
       {step === 0 && (
         <section className="lesson">
           <span className="kicker">
-            MOMENT 1 · COFFEE SHOP ·{" "}
+            TODAY · {mission.scene.toUpperCase()} ·{" "}
             {profile?.target?.toUpperCase() || "SPANISH"}
           </span>
           <h1>
-            Listen for the <em>shape</em>,<br />
-            not every word.
+            Listen for the <em>pressure,</em><br />
+            then decide your move.
           </h1>
           <p className="instruction">
-            You’re ordering before work. Tap to hear the barista once. What
-            matters is the choice they’re offering.
+            {mission.role}. {mission.pressure} Tap once, then identify what a
+            useful response must accomplish.
           </p>
           <button
             type="button"
             className="sound"
-            onClick={() => say(copy.hear, copy.lang)}
+            onClick={() => say(mission.opening, copy.lang)}
           >
             <span>
               <Volume2 />
@@ -2643,11 +2682,12 @@ function Lesson({
             <b>Play</b>
           </button>
           <div className="choices">
+            <p className="choicequestion">{mission.listeningQuestion}</p>
             <button type="button" onClick={advance}>
-              {copy.choice}
+              {mission.choice}
             </button>
             <button type="button" onClick={advance}>
-              {copy.alternative}
+              {mission.alternative}
             </button>
           </div>
           <button type="button" className="skip" onClick={advance}>
@@ -2658,14 +2698,17 @@ function Lesson({
       {step === 1 && (
         <section className="lesson speak">
           <span className="kicker">
-            NOW MAKE IT YOURS · {profile?.target?.toUpperCase() || "SPANISH"}
+            COMPLEX OUTPUT · {profile?.target?.toUpperCase() || "SPANISH"}
           </span>
           <h1>
-            Order what you’d
-            <br />
-            <em>actually drink.</em>
+            Do more than answer.<br />
+            <em>Build a position.</em>
           </h1>
-          <p className="prompt">“{copy.prompt}”</p>
+          <p className="instruction">{mission.task}</p>
+          <p className="prompt">“{mission.prompt}”</p>
+          <div className="missionmoves" aria-label="Required language moves">
+            {mission.moves.map((move, index) => <span key={move}>{index + 1}. {move}</span>)}
+          </div>
           <button
             type="button"
             className={"mic " + (listening ? "active" : "")}
@@ -2714,13 +2757,19 @@ function Lesson({
             type="button"
             className="type sample"
             onClick={() => {
-              setSpoken(copy.prompt);
+              setShowFrame((value) => !value);
               setValidation("");
-              requestAnimationFrame(() => answerRef.current?.focus());
             }}
           >
-            Use the sample answer
+            {showFrame ? "Hide the sentence frame" : "Give me a sentence frame"}
           </button>
+          {showFrame && (
+            <div className="languageframe">
+              <span>STRUCTURE, NOT A SCRIPT</span>
+              <p>{mission.frame}</p>
+              <small>Replace every blank with your own meaning. Luma will still require a reason, example, consequence, or trade-off.</small>
+            </div>
+          )}
         </section>
       )}
       {step === 2 && (
@@ -2735,15 +2784,15 @@ function Lesson({
               </div>
             </div>
             <h2>{feedback?.praise || "You were completely understood."}</h2>
-            <p>{feedback?.refinement || copy.refinement}</p>
+            <p>{feedback?.refinement || mission.refinement}</p>
             <div className="rhythm">
               <span>your first try</span>
               <ArrowRight />
-              <b>{feedback?.naturalVersion || copy.chunk}</b>
+              <b>{feedback?.naturalVersion || mission.chunk}</b>
               <button
                 type="button"
                 onClick={() =>
-                  say(feedback?.naturalVersion || copy.prompt, copy.lang)
+                  say(feedback?.naturalVersion || mission.model, copy.lang)
                 }
               >
                 <Play size={15} />
@@ -2795,8 +2844,8 @@ function Lesson({
             <div>
               <b>Luma will bring this back tomorrow</b>
               <p>
-                Inside a meeting sentence—just before your brain is likely to
-                lose it.
+                In {mission.changedContext}—with a different role and a new
+                constraint, so you have to rebuild the idea rather than repeat it.
               </p>
             </div>
           </div>
