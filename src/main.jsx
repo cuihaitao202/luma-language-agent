@@ -897,6 +897,20 @@ function App() {
           setLearnerModel((current) => {
             const next = saveContextualLookup(current || createLearnerModel(profile || {}), lookup);
             localStorage.setItem("luma-learner-model", JSON.stringify(next));
+            const memoryKey = String(
+              lookup.blindSpotKey
+                || `lookup:${String(lookup.term || lookup.query || "question").toLocaleLowerCase()}:${String(lookup.detectedDomain || "general").toLocaleLowerCase()}`,
+            ).slice(0, 260);
+            syncCloudLearning(profile, next, {
+              type: lookup.status === "unresolved" ? "knowledge-gap" : "contextual-lookup",
+              skill: "reading",
+              score: lookup.status === "unresolved" ? 0.2 : 0.45,
+              hesitation: lookup.status === "unresolved" ? 0.8 : 0.5,
+              transfer: false,
+              strategy: lookup.sourceType === "image" ? "image-context-lookup" : "text-context-lookup",
+              context: String(lookup.detectedDomain || lookup.sourceType || "lookup").slice(0, 160),
+              memoryKey,
+            }).catch(() => {});
             return next;
           });
         }}
@@ -2070,6 +2084,28 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
       vocabulary: `Explain the important words in this exact sentence: “${messages.at(-1)?.text || prompt.text}”.`,
     };
     const learnerText = usesComposer ? spoken.trim() : helpLabels[intent];
+    if (!isAnswer) {
+      const unknownText = intent === "bridge"
+        ? learnerText
+        : messages.at(-1)?.text || prompt.text;
+      captureEvidence?.({
+        type: "knowledge-gap",
+        skill: intent === "bridge" ? "speaking" : "listening",
+        score: 0.2,
+        hesitation: 0.8,
+        hints: 1,
+        transfer: false,
+        memoryKey: `question:${intent}:${unknownText}`.slice(0, 260),
+        phrase: unknownText,
+        intent: intent === "vocabulary"
+          ? "understand unknown words from a real conversation"
+          : intent === "clarify"
+            ? "understand a sentence that did not land"
+            : `express this meaning naturally in ${profile?.target || "the target language"}`,
+        context: activeScenario,
+        strategy: "learner-initiated-knowledge-gap",
+      });
+    }
     const nextHistory = [
       ...messages,
       { role: "learner", text: learnerText, intent },
@@ -2439,6 +2475,128 @@ function Lesson({
       advance();
     }
   };
+  const lookupAction = nextBestAction(learnerModel);
+  const lookupReview = lookupAction.memory?.lookup?.status === "resolved"
+    ? lookupAction.memory
+    : null;
+  const finishLookupReview = (remembered) => {
+    captureEvidence?.({
+      type: "lookup-retrieval",
+      skill: "reading",
+      score: remembered ? 0.86 : 0.38,
+      hesitation: remembered ? 0.12 : 0.65,
+      hints: remembered ? 0 : 1,
+      transfer: remembered,
+      memoryKey: lookupReview.key,
+      phrase: lookupReview.lookup.naturalExample || lookupReview.term,
+      intent: `retrieve and use “${lookupReview.term}”`,
+      context: `follow-up retrieval in ${profile?.domain || "a new real-life context"}`,
+      strategy: "knowledge-gap-retrieval",
+    });
+    setDone(true);
+    back();
+  };
+
+  if (lookupReview) {
+    const lookup = lookupReview.lookup;
+    return (
+      <main className="lessonShell">
+        <header className="lessonnav">
+          <button className="iconbtn" onClick={back}><ChevronLeft /></button>
+          <div className="progress"><i style={{ width: step === 0 ? "50%" : "100%" }} /></div>
+          <span>90 sec</span>
+          <button className="close" onClick={back}><X /></button>
+        </header>
+        {step === 0 ? (
+          <section className="lesson speak lookupreview">
+            <span className="kicker">YOUR KNOWLEDGE GAP · ACTIVE RECALL</span>
+            <h1>Before seeing the answer,<br /><em>retrieve it.</em></h1>
+            <p className="instruction">{lookup.retrievalPrompt}</p>
+            <div className="lookupreviewsource">
+              <span>What you previously looked up</span>
+              <b>{lookupReview.term}</b>
+              <small>{lookup.originalQuestion}</small>
+            </div>
+            <button
+              type="button"
+              className={"mic " + (listening ? "active" : "")}
+              onClick={listen}
+              aria-label={`Answer in ${profile?.target || "English"}`}
+            >
+              <Mic size={34} />
+              <span>{listening ? "Listening…" : `Answer aloud in ${profile?.target || "English"}`}</span>
+            </button>
+            {speechNotice && <p className="speechnotice" role="status">{speechNotice}</p>}
+            <label className="answerlabel" htmlFor="lookup-review-answer">
+              Your answer in {profile?.target || "English"}
+            </label>
+            <textarea
+              id="lookup-review-answer"
+              ref={answerRef}
+              className="answerinput"
+              value={spoken}
+              onChange={(event) => {
+                setSpoken(event.target.value);
+                setValidation("");
+              }}
+              placeholder={`Explain or use “${lookupReview.term}” without reopening the definition…`}
+            />
+            {validation && <p className="validation" role="alert">{validation}</p>}
+            <button
+              type="button"
+              className="primary compact"
+              onClick={() => {
+                if (!spoken.trim()) {
+                  setValidation(`Try an answer in ${profile?.target || "English"} before revealing it.`);
+                  answerRef.current?.focus();
+                  return;
+                }
+                setValidation("");
+                setStep(1);
+              }}
+            >
+              Check my recall <ArrowRight />
+            </button>
+          </section>
+        ) : (
+          <section className="lesson feedback lookupreview">
+            <span className="kicker">COMPARE · CORRECT · RESCHEDULE</span>
+            <div className="coach">
+              <div className="coachhead">
+                <span className="miniavatar">L</span>
+                <div><b>{lookupReview.term}</b><small>{lookup.pronunciationLanguage || profile?.target} pronunciation · {lookup.phonetic}</small></div>
+                <button
+                  type="button"
+                  className="iconbtn"
+                  onClick={() => say(lookup.pronunciationText || lookupReview.term, speechLocaleForLanguage(lookup.pronunciationLanguage || profile?.target))}
+                  aria-label={`Play ${lookupReview.term}`}
+                >
+                  <Volume2 />
+                </button>
+              </div>
+              <h2>{lookup.contextualMeaning}</h2>
+              <p>{lookup.nativeExplanation}</p>
+              <div className="rhythm">
+                <span>natural use</span>
+                <ArrowRight />
+                <b>{lookup.naturalExample || lookupReview.phrase}</b>
+              </div>
+            </div>
+            <p className="instruction">Compare this with your answer. Did you retrieve the meaning without seeing it first?</p>
+            <div className="lookupgrade">
+              <button type="button" className="primary" onClick={() => finishLookupReview(true)}>
+                <Check /> I remembered it
+              </button>
+              <button type="button" className="secondary" onClick={() => finishLookupReview(false)}>
+                Not yet · bring it back sooner
+              </button>
+            </div>
+          </section>
+        )}
+      </main>
+    );
+  }
+
   return (
     <main className="lessonShell">
       <header className="lessonnav">
@@ -2714,7 +2872,9 @@ function ContextLookup({ profile, back, save }) {
     if (!pronunciationText) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(pronunciationText);
-    utterance.lang = speechLocaleForLanguage(profile?.target || "English");
+    utterance.lang = speechLocaleForLanguage(
+      result.pronunciationLanguage || profile?.target || "English",
+    );
     utterance.rate = 0.78;
     const languagePrefix = utterance.lang.split("-")[0].toLowerCase();
     const matchingVoice = window.speechSynthesis
@@ -2783,6 +2943,25 @@ function ContextLookup({ profile, back, save }) {
       setNotice("Paste the sentence, type part of the word, or add a screenshot first.");
       return;
     }
+    const sourceType = image ? "image" : "text";
+    const blindSpotSeed = String(
+      query.trim() || context.trim().slice(0, 120) || imageName || "image question",
+    )
+      .toLocaleLowerCase()
+      .replace(/\s+/g, " ")
+      .slice(0, 160);
+    const blindSpotKey = `lookup-gap:${sourceType}:${blindSpotSeed}`;
+    save?.({
+      status: "unresolved",
+      blindSpotKey,
+      term: query.trim() || imageName || context.trim().slice(0, 120) || "image question",
+      query: query.trim(),
+      context: context.trim(),
+      imageName,
+      sourceType,
+      targetLanguage: profile?.target || "English",
+      pronunciationLanguage: profile?.target || "English",
+    });
     setLoading(true);
     const startedAt = performance.now();
     setNotice(image ? "Reading and translating the image…" : "Finding the meaning…");
@@ -2813,7 +2992,16 @@ function ContextLookup({ profile, back, save }) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload?.error?.message || `Context analysis failed (${response.status}).`);
       }
-      const data = await response.json();
+      const data = {
+        ...(await response.json()),
+        status: "resolved",
+        blindSpotKey,
+        query: query.trim(),
+        imageName,
+        sourceType,
+        targetLanguage: profile?.target || "English",
+        pronunciationLanguage: profile?.target || "English",
+      };
       setResult(data);
       save?.(data);
       setNotice(`Done in ${((performance.now() - startedAt) / 1000).toFixed(1)}s · translated into ${translationLanguage}.`);
@@ -2821,8 +3009,11 @@ function ContextLookup({ profile, back, save }) {
       const isVerdict = /verdi|判决/i.test(`${query} ${context}`);
       if (isVerdict) {
         const data = {
+          status: "resolved",
+          blindSpotKey,
           term: "verdict",
           pronunciationText: "verdict",
+          pronunciationLanguage: profile?.target || "English",
           phonetic: "/ˈvɜːrdɪkt/",
           pronunciation: "重音在第一个音节：VER-dict；结尾的 /kt/ 要清楚但不要额外加元音。",
           sourceText: context,
@@ -2839,6 +3030,10 @@ function ContextLookup({ profile, back, save }) {
           ambiguityNote: "没有完整截图时，无法确定它代表交易方向、风险审核还是多个信号的汇总结论。",
           confidence: "medium",
           retrievalPrompt: "如果模型评估所有信号后给出最终看多结论，你会怎样用 verdict 描述？",
+          query: query.trim(),
+          imageName,
+          sourceType,
+          targetLanguage: profile?.target || "English",
         };
         setResult(data);
         save?.(data);
@@ -2930,6 +3125,7 @@ function ContextLookup({ profile, back, save }) {
                 <div>
                   <span>{result.detectedDomain}</span>
                   <h2>{result.term}</h2>
+                  <span className="pronunciationlanguage">{result.pronunciationLanguage || profile?.target || "English"} pronunciation</span>
                   <div className="pronunciationrow">
                     <button type="button" onClick={speakTerm} aria-label={`Play pronunciation of ${result.pronunciationText || result.term}`}>
                       <Volume2 /> {speakingTerm ? "Playing…" : "Listen"}

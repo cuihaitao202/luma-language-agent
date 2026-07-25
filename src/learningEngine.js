@@ -166,6 +166,14 @@ export function nextBestAction(model, now = Date.now()) {
     })
     .sort((a, b) => a.priority - b.priority)[0];
   if (due && (due.nextDueAt <= now || due.r < 0.62)) {
+    if (due.lookup?.status === "unresolved") {
+      return {
+        mode: "knowledge-gap-repair",
+        skill: "reading",
+        memory: due,
+        reason: `Resolve the unanswered question about “${due.term || due.phrase}” before adding new material.`,
+      };
+    }
     return {
       mode: "transfer-retrieval",
       skill: weakSkill,
@@ -202,6 +210,14 @@ export function learnerSnapshot(model) {
       skill: action.skill,
       phrase: action.memory?.phrase || null,
       knownContexts: action.memory?.contexts || [],
+      lookup: action.memory?.lookup ? {
+        term: action.memory.term,
+        status: action.memory.lookup.status,
+        contextualMeaning: action.memory.lookup.contextualMeaning,
+        retrievalPrompt: action.memory.lookup.retrievalPrompt,
+        pronunciationText: action.memory.lookup.pronunciationText,
+        phonetic: action.memory.lookup.phonetic,
+      } : null,
     },
     learningPlan: learningPlan(safe),
     instruction:
@@ -211,10 +227,20 @@ export function learnerSnapshot(model) {
 
 export function saveContextualLookup(model, lookup, now = Date.now()) {
   const next = structuredClone(model || createLearnerModel());
-  const term = String(lookup?.term || "").trim();
+  const status = lookup?.status === "unresolved" ? "unresolved" : "resolved";
+  const term = String(
+    lookup?.term
+      || lookup?.query
+      || lookup?.context
+      || lookup?.imageName
+      || "unresolved image question",
+  ).trim().slice(0, 120);
   if (!term) return next;
   const domain = String(lookup.domain || lookup.detectedDomain || "general");
-  const key = `lookup:${term.toLocaleLowerCase()}:${domain.toLocaleLowerCase()}`;
+  const key = String(
+    lookup.blindSpotKey
+      || `lookup:${term.toLocaleLowerCase()}:${domain.toLocaleLowerCase()}`,
+  ).slice(0, 260);
   const existing = next.memories[key] || {
     key,
     intent: `understand and use “${term}” in ${domain}`,
@@ -222,10 +248,17 @@ export function saveContextualLookup(model, lookup, now = Date.now()) {
     contexts: [],
     stabilityHours: 8,
     successfulRetrievals: 0,
+    difficulty: 7,
+    lapses: 0,
+    retrievalHistory: [],
   };
   existing.term = term;
   existing.lookup = {
+    status,
+    sourceType: String(lookup.sourceType || (lookup.imageName ? "image" : "text")),
+    originalQuestion: String(lookup.query || lookup.context || lookup.imageName || term).slice(0, 800),
     pronunciationText: String(lookup.pronunciationText || term),
+    pronunciationLanguage: String(lookup.pronunciationLanguage || lookup.targetLanguage || ""),
     phonetic: String(lookup.phonetic || ""),
     pronunciation: String(lookup.pronunciation || ""),
     sourceText: String(lookup.sourceText || "").slice(0, 800),
@@ -234,22 +267,37 @@ export function saveContextualLookup(model, lookup, now = Date.now()) {
     plainExplanation: String(lookup.plainExplanation || ""),
     contextualMeaning: String(lookup.contextualMeaning || ""),
     dictionaryContrast: String(lookup.dictionaryContrast || ""),
+    naturalExample: String(lookup.naturalExample || ""),
     commonCollocations: Array.isArray(lookup.commonCollocations) ? lookup.commonCollocations.slice(0, 8) : [],
     examples: Array.isArray(lookup.examples) ? lookup.examples.slice(0, 5) : [],
     usageNote: String(lookup.usageNote || ""),
+    retrievalPrompt: String(lookup.retrievalPrompt || `What did “${term}” mean when you looked it up?`),
   };
   existing.lastSeenAt = now;
-  existing.nextDueAt = now + 8 * 36e5;
-  existing.stabilityHours = Math.max(8, existing.stabilityHours || 8);
+  if (status === "resolved") existing.phrase = String(lookup.naturalExample || term);
+  existing.nextDueAt = now + (status === "unresolved" ? 1 : 8) * 36e5;
+  existing.stabilityHours = status === "unresolved"
+    ? 1
+    : Math.max(8, existing.stabilityHours || 8);
+  existing.difficulty = status === "unresolved" ? 9 : Math.max(6, Number(existing.difficulty || 7));
+  existing.lapses = Number(existing.lapses || 0) + (status === "unresolved" ? 1 : 0);
   existing.experiment = {
-    stage: "meaning-understood",
-    nextTest: "context-reconstruction",
+    stage: status === "unresolved" ? "knowledge-gap-detected" : "meaning-understood",
+    nextTest: status === "unresolved" ? "resolve-then-retrieve" : "context-reconstruction",
     variant: Object.keys(next.memories).length % 2 === 0 ? "example-first" : "contrast-first",
   };
   if (!existing.contexts.includes(domain)) existing.contexts = [...existing.contexts, domain].slice(-5);
   next.memories[key] = existing;
   next.recentSignals = [
-    { skill: "reading", score: 0.45, hesitation: 0.5, transfer: false, at: now, source: "contextual-lookup", memoryKey: key },
+    {
+      skill: "reading",
+      score: status === "unresolved" ? 0.2 : 0.45,
+      hesitation: status === "unresolved" ? 0.8 : 0.5,
+      transfer: false,
+      at: now,
+      source: status === "unresolved" ? "knowledge-gap" : "contextual-lookup",
+      memoryKey: key,
+    },
     ...(next.recentSignals || []),
   ].slice(0, 20);
   return next;

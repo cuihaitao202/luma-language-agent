@@ -1562,6 +1562,7 @@ nav {
 .termhead span, .resultlabel, .meaningprimary > span, .meaningpair span, .retrievalcard > span { color: var(--coral); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .termhead h2 { margin: 3px 0 18px; font: 58px/1 Georgia, serif; }
 .termhead > b { padding: 7px 10px; border-radius: 30px; background: var(--sage); font-size: 11px; text-transform: uppercase; }
+.termhead .pronunciationlanguage { display: block; margin: -8px 0 12px; color: var(--muted); }
 .pronunciationrow { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: -8px 0 8px; }
 .pronunciationrow button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid #e26b4a55; border-radius: 999px; background: #fff3ed; color: var(--green); font-weight: 800; cursor: pointer; }
 .pronunciationrow button:hover { border-color: var(--coral); }
@@ -1580,6 +1581,12 @@ nav {
 .lookupresult article small { display: block; color: var(--muted); line-height: 1.5; }
 .retrievalcard { margin-top: 20px; padding: 18px; border: 1px solid #e26b4a55; border-radius: 14px; background: #fff3ed; }
 .retrievalcard p { margin: 7px 0; font-weight: 700; }
+.lookupreviewsource { display: grid; gap: 6px; width: min(620px, 100%); margin: 18px auto; padding: 18px; border: 1px solid #e26b4a45; border-radius: 15px; background: #fff3ed; text-align: left; }
+.lookupreviewsource span { color: var(--coral); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.lookupreviewsource b { font: 30px/1.1 Georgia, serif; }
+.lookupreviewsource small { color: var(--muted); line-height: 1.45; }
+.lookupgrade { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+.lookupgrade button { min-height: 50px; }
 @keyframes callpulse {
   50% {
     box-shadow: 0 0 0 18px #49a96722;

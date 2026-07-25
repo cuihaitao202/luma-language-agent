@@ -58,6 +58,32 @@ test("a contextual lookup becomes a scheduled learning memory", () => {
   assert.equal(memory.nextDueAt, 1_000 + 8 * 36e5);
 });
 
+test("every lookup attempt becomes a knowledge gap and is upgraded in place", () => {
+  const blindSpotKey = "lookup-gap:image:waveguide-paper";
+  let model = saveContextualLookup(createLearnerModel(), {
+    status: "unresolved",
+    blindSpotKey,
+    imageName: "waveguide-paper.png",
+    sourceType: "image",
+    targetLanguage: "English",
+  }, 1_000);
+  assert.equal(model.memories[blindSpotKey].lookup.status, "unresolved");
+  assert.equal(model.memories[blindSpotKey].experiment.stage, "knowledge-gap-detected");
+
+  model = saveContextualLookup(model, {
+    status: "resolved",
+    blindSpotKey,
+    term: "slanted grating",
+    contextualMeaning: "倾斜光栅",
+    retrievalPrompt: "What does slanted mean here?",
+    pronunciationLanguage: "English",
+  }, 2_000);
+  assert.equal(model.memories[blindSpotKey].lookup.status, "resolved");
+  assert.equal(model.memories[blindSpotKey].term, "slanted grating");
+  assert.equal(model.memories[blindSpotKey].experiment.nextTest, "context-reconstruction");
+  assert.equal(learnerSnapshot(model).nextAction.lookup.term, "slanted grating");
+});
+
 test("successful transfer expands stability and records contexts", () => {
   let model = createLearnerModel();
   model = recordEvidence(model, {
