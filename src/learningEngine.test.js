@@ -6,6 +6,7 @@ import {
   learningPlan,
   nextBestAction,
   practiceTechnique,
+  recentLookupHistory,
   recordEvidence,
   retrievability,
   saveContextualLookup,
@@ -85,6 +86,25 @@ test("every lookup attempt becomes a knowledge gap and is upgraded in place", ()
   assert.equal(model.memories[blindSpotKey].lookupCount, 1);
   assert.equal(learnerSnapshot(model).nextAction.lookup.term, "slanted grating");
   assert.equal(learnerSnapshot(model).knowledgeGaps[0].term, "slanted grating");
+  assert.equal(recentLookupHistory(model)[0].term, "slanted grating");
+  assert.equal(recentLookupHistory(model)[0].status, "resolved");
+  assert.equal(model.lookupHistory.length, 1);
+});
+
+test("lookup history keeps the newest one hundred questions", () => {
+  let model = createLearnerModel();
+  for (let index = 0; index < 105; index += 1) {
+    model = saveContextualLookup(model, {
+      status: "unresolved",
+      blindSpotKey: `lookup-gap:text:${index}`,
+      term: `term ${index}`,
+      query: `term ${index}`,
+      context: `sentence ${index}`,
+    }, index + 1);
+  }
+  assert.equal(model.lookupHistory.length, 100);
+  assert.equal(recentLookupHistory(model, 50).length, 50);
+  assert.equal(recentLookupHistory(model, 100)[0].term, "term 104");
 });
 
 test("successful transfer expands stability and records contexts", () => {

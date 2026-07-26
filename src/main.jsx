@@ -37,6 +37,7 @@ import {
   createLearnerModel,
   learnerSnapshot,
   nextBestAction,
+  recentLookupHistory,
   recordEvidence,
   saveContextualLookup,
 } from "./learningEngine.js";
@@ -897,6 +898,7 @@ function App() {
     return (
       <ContextLookup
         profile={profile}
+        learnerModel={learnerModel}
         back={() => setView("home")}
         save={(lookup) => {
           setLearnerModel((current) => {
@@ -1270,6 +1272,31 @@ function Home({
           {profile?.cloudLearning && (
             <button className="textbtn" onClick={forgetCloudLearning}>Delete cloud learning data</button>
           )}
+        </div>
+      </section>
+      <section className="skillroutes" aria-label="Reading listening and writing practice">
+        <div className="sectiontitle">
+          <div>
+            <span className="kicker">TRAIN THE OTHER THREE SKILLS</span>
+            <h2>Read, listen, and write inside the same memory loop</h2>
+          </div>
+        </div>
+        <div className="skillroutegrid">
+          <button type="button" onClick={lookup}>
+            <BookOpen />
+            <span><b>Read for meaning</b><small>Context Lens · decode a real sentence, paper, screen, or photo</small></span>
+            <ArrowRight />
+          </button>
+          <button type="button" onClick={callSettings.enabled && !callDone ? answerCall : start}>
+            <AudioLines />
+            <span><b>Listen, notice, respond</b><small>Live call or today’s scene · hear the key detail before answering</small></span>
+            <ArrowRight />
+          </button>
+          <button type="button" onClick={start}>
+            <Keyboard />
+            <span><b>Write a precise answer</b><small>Daily mission · type 2–4 connected sentences, then refine once</small></span>
+            <ArrowRight />
+          </button>
         </div>
       </section>
       <section className="callstrip">
@@ -2944,7 +2971,7 @@ const prepareLookupImage = (file) => new Promise((resolve, reject) => {
   source.src = objectUrl;
 });
 
-function ContextLookup({ profile, back, save }) {
+function ContextLookup({ profile, learnerModel, back, save }) {
   const [query, setQuery] = useState("");
   const [context, setContext] = useState("");
   const [image, setImage] = useState("");
@@ -2953,6 +2980,7 @@ function ContextLookup({ profile, back, save }) {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [speakingTerm, setSpeakingTerm] = useState(false);
+  const [historyLimit, setHistoryLimit] = useState(50);
   const [translationLanguage, setTranslationLanguage] = useState(() =>
     localStorage.getItem("luma-translation-language")
       || (profile?.nativeLanguage && profile.nativeLanguage !== "English" ? profile.nativeLanguage : deviceExplanationLanguage()),
@@ -2960,6 +2988,22 @@ function ContextLookup({ profile, back, save }) {
   const wordInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const lookupHistory = recentLookupHistory(learnerModel, historyLimit);
+  const totalLookupHistory = recentLookupHistory(learnerModel, 100).length;
+
+  const restoreLookup = (item) => {
+    setQuery(item.query || item.term || "");
+    setContext(item.context || "");
+    setImage("");
+    setImageName(item.imageName || "");
+    setResult(item.result || null);
+    setNotice(
+      item.result
+        ? "Opened from your recent lookups. Listen again or use it in a new sentence."
+        : "This earlier question did not finish. Check the text and try it again.",
+    );
+    requestAnimationFrame(() => wordInputRef.current?.focus());
+  };
 
   const speakTerm = () => {
     if (!result) return;
@@ -3158,6 +3202,45 @@ function ContextLookup({ profile, back, save }) {
         <span className="kicker">MEANING IN THE REAL WORLD</span>
         <h1>Don’t translate the word.<br /><em>Decode what it means here.</em></h1>
         <p>Paste a sentence, upload a screenshot, or type the part you remember. Luma separates the dictionary meaning from the meaning used in your paper, app, workplace, or daily life.</p>
+      </section>
+      <section className="lookuphistory" aria-label="Recent lookup history">
+        <div className="lookuphistoryhead">
+          <div>
+            <span className="kicker">YOUR RECENT QUESTIONS</span>
+            <h2>Words and sentences you looked up</h2>
+            <p>Tap one to reopen its context, explanation, phonetics, and pronunciation.</p>
+          </div>
+          <b>{totalLookupHistory} saved</b>
+        </div>
+        {lookupHistory.length ? (
+          <>
+            <div className="lookuphistorylist">
+              {lookupHistory.map((item) => (
+                <button type="button" key={item.id} onClick={() => restoreLookup(item)}>
+                  <span className={`historysource ${item.sourceType}`}>
+                    {item.sourceType === "image" ? <Camera /> : <ScanText />}
+                  </span>
+                  <span>
+                    <b>{item.term || item.query}</b>
+                    <small>{item.context || item.query || item.imageName || "Context saved for review"}</small>
+                  </span>
+                  <time>{item.at ? new Date(item.at).toLocaleDateString([], { month: "short", day: "numeric" }) : "Saved"}</time>
+                </button>
+              ))}
+            </div>
+            {totalLookupHistory > 50 && (
+              <button
+                type="button"
+                className="historytoggle"
+                onClick={() => setHistoryLimit((current) => current === 50 ? 100 : 50)}
+              >
+                {historyLimit === 50 ? "Show up to 100" : "Show latest 50"}
+              </button>
+            )}
+          </>
+        ) : (
+          <p className="emptyhistory">Your recent 50–100 lookups will appear here automatically.</p>
+        )}
       </section>
       <section className="lookupworkbench">
         <div className="lookupinputs">

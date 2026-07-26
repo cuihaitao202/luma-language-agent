@@ -243,6 +243,35 @@ export function learnerSnapshot(model) {
   };
 }
 
+export function recentLookupHistory(model, limit = 50) {
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
+  const stored = Array.isArray(model?.lookupHistory) ? model.lookupHistory : [];
+  if (stored.length) {
+    return [...stored]
+      .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
+      .slice(0, safeLimit);
+  }
+  return Object.values(model?.memories || {})
+    .filter((memory) => memory?.lookup)
+    .map((memory) => ({
+      id: `${memory.key}:${memory.lastLookupAt || memory.lastSeenAt || 0}`,
+      key: memory.key,
+      at: memory.lastLookupAt || memory.lastSeenAt || 0,
+      status: memory.lookup.status,
+      term: memory.term || memory.phrase,
+      query: memory.lookup.originalQuestion || memory.term || "",
+      context: memory.lookup.sourceText || "",
+      imageName: memory.lookup.sourceType === "image" ? memory.lookup.originalQuestion : "",
+      sourceType: memory.lookup.sourceType || "text",
+      result: memory.lookup.status === "resolved" ? {
+        term: memory.term || memory.phrase,
+        ...memory.lookup,
+      } : null,
+    }))
+    .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
+    .slice(0, safeLimit);
+}
+
 export function saveContextualLookup(model, lookup, now = Date.now()) {
   const next = structuredClone(model || createLearnerModel());
   const status = lookup?.status === "unresolved" ? "unresolved" : "resolved";
@@ -309,6 +338,39 @@ export function saveContextualLookup(model, lookup, now = Date.now()) {
   };
   if (!existing.contexts.includes(domain)) existing.contexts = [...existing.contexts, domain].slice(-5);
   next.memories[key] = existing;
+  next.lookupHistory = Array.isArray(next.lookupHistory) ? next.lookupHistory : [];
+  const historyEntry = {
+    id: `${key}:${now}`,
+    key,
+    at: now,
+    status,
+    term,
+    query: String(lookup.query || term).slice(0, 800),
+    context: String(lookup.context || lookup.sourceText || "").slice(0, 4000),
+    imageName: String(lookup.imageName || "").slice(0, 240),
+    sourceType: existing.lookup.sourceType,
+    result: status === "resolved" ? {
+      term,
+      detectedDomain: domain,
+      confidence: String(lookup.confidence || ""),
+      ...existing.lookup,
+    } : null,
+  };
+  if (status === "resolved") {
+    const pendingIndex = next.lookupHistory.findIndex(
+      (item) => item.key === key && item.status === "unresolved",
+    );
+    if (pendingIndex >= 0) {
+      historyEntry.id = next.lookupHistory[pendingIndex].id;
+      historyEntry.at = next.lookupHistory[pendingIndex].at || now;
+      next.lookupHistory[pendingIndex] = historyEntry;
+    } else {
+      next.lookupHistory.unshift(historyEntry);
+    }
+  } else {
+    next.lookupHistory.unshift(historyEntry);
+  }
+  next.lookupHistory = next.lookupHistory.slice(0, 100);
   next.recentSignals = [
     {
       skill: "reading",
