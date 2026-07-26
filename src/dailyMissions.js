@@ -165,6 +165,111 @@ export function selectDailyMission(day, targetLanguage = "English") {
   return englishDailyMissions[index];
 }
 
+const technicalDomainPattern = /ai|software|quant|finance|optic|waveguide|engineering|research|model|system|design|technical/i;
+const technicalMissionIds = new Set([
+  "deadline-negotiation",
+  "defend-recommendation",
+  "explain-complex-idea",
+  "polite-disagreement",
+  "give-feedback",
+  "choose-under-uncertainty",
+]);
+
+export function selectMissionTargets(model, day, limit = 2) {
+  const dayStart = Date.parse(`${day}T00:00:00Z`);
+  const yesterdayStart = dayStart - 86_400_000;
+  const memories = Object.values(model?.memories || {});
+  const ranked = memories
+    .filter((memory) => memory?.lookup?.status !== "unresolved")
+    .map((memory) => {
+      const lookupCount = Number(memory.lookupCount || 0);
+      const lapses = Number(memory.lapses || 0);
+      const lastScore = Number(memory.lastScore ?? 0.5);
+      const lastSeenAt = Number(memory.lastSeenAt || 0);
+      const seenYesterday = Number.isFinite(dayStart)
+        && lastSeenAt >= yesterdayStart
+        && lastSeenAt < dayStart;
+      const term = String(memory.term || memory.phrase || memory.intent || "").trim();
+      const domain = String(
+        memory.lookup?.detectedDomain
+          || memory.contexts?.at?.(-1)
+          || memory.intent
+          || "general",
+      );
+      const score = lookupCount * 2.4
+        + lapses * 1.8
+        + Math.max(0, 0.7 - lastScore) * 5
+        + (seenYesterday ? 4 : 0)
+        + (memory.lookup ? 1.2 : 0);
+      return {
+        key: memory.key,
+        term,
+        domain,
+        score,
+        lookupCount,
+        seenYesterday,
+        kind: memory.lookup ? "searched word" : "previous weak point",
+        meaning: String(memory.lookup?.contextualMeaning || memory.intent || ""),
+      };
+    })
+    .filter((target) => target.term && target.score > 0.5)
+    .sort((a, b) => b.score - a.score);
+
+  const unique = [];
+  const seen = new Set();
+  for (const target of ranked) {
+    const normalized = target.term.toLocaleLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(target);
+    if (unique.length >= limit) break;
+  }
+  return unique;
+}
+
+const transferQuestions = [
+  (term, mission) => `How would “${term}” change the decision or explanation in this ${mission.scene.toLocaleLowerCase()}?`,
+  (term) => `Explain “${term}” without quoting its old definition, then use it to support your position.`,
+  (term) => `Give a concrete example of “${term}”, then explain its consequence or trade-off.`,
+  (term) => `Compare “${term}” with a plausible alternative and defend which one fits better here.`,
+];
+
+export function selectAdaptiveDailyMission(day, targetLanguage = "English", model = null) {
+  if (targetLanguage !== "English") return null;
+  const targets = selectMissionTargets(model, day);
+  if (!targets.length) return selectDailyMission(day, targetLanguage);
+
+  const technical = targets.some((target) => technicalDomainPattern.test(`${target.domain} ${target.meaning}`));
+  const pool = technical
+    ? englishDailyMissions.filter((mission) => technicalMissionIds.has(mission.id))
+    : englishDailyMissions;
+  const termOffset = [...targets[0].term].reduce((sum, character) => sum + character.codePointAt(0), 0);
+  const index = ((dayIndex(day) + termOffset) % pool.length + pool.length) % pool.length;
+  const base = pool[index];
+  const questionIndex = ((dayIndex(day) + targets.length) % transferQuestions.length + transferQuestions.length)
+    % transferQuestions.length;
+  const transferQuestion = transferQuestions[questionIndex](targets[0].term, base);
+  const secondary = targets[1]?.term
+    ? ` If it fits naturally, contrast it with “${targets[1].term}”, another recent weak point.`
+    : "";
+
+  return {
+    ...base,
+    prompt: `${base.prompt} ${transferQuestion}${secondary}`,
+    moves: [
+      ...base.moves.slice(0, 2),
+      `transfer “${targets[0].term}” into this new situation`,
+    ],
+    frame: `${base.frame} Bring the old knowledge into the new situation with: “This matters here because ___.”`,
+    intent: `${base.intent}; transfer prior knowledge about ${targets.map((target) => target.term).join(" and ")}`,
+    personalization: {
+      primary: targets[0],
+      secondary: targets[1] || null,
+      transferQuestion,
+    },
+  };
+}
+
 export function assessComplexEnglish(text) {
   const normalized = String(text || "").trim();
   const words = normalized.match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g) || [];

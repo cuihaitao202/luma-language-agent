@@ -40,7 +40,11 @@ import {
   recordEvidence,
   saveContextualLookup,
 } from "./learningEngine.js";
-import { assessComplexEnglish, selectDailyMission } from "./dailyMissions.js";
+import {
+  assessComplexEnglish,
+  selectAdaptiveDailyMission,
+  selectMissionTargets,
+} from "./dailyMissions.js";
 
 const scenes = [
   {
@@ -1164,7 +1168,11 @@ function Home({
   forgetCloudLearning,
 }) {
   const action = nextBestAction(learnerModel);
-  const todayMission = selectDailyMission(localDay(), profile?.target || "Spanish");
+  const todayMission = selectAdaptiveDailyMission(
+    localDay(),
+    profile?.target || "Spanish",
+    learnerModel,
+  );
   return (
     <main className="shell">
       <nav>
@@ -1531,9 +1539,13 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const upstreamWatchdogRef = useRef(null);
   const expectingUserRef = useRef(false);
   const transportRef = useRef("webrtc");
-  const scenario = socialScenario
+  const voiceTargets = selectMissionTargets(learnerModel, localDay());
+  const baseScenario = socialScenario
     ? `${socialScenario.title}; relationship: ${socialScenario.relationship}; channel: ${socialScenario.channel}; challenge: ${socialScenario.pressure}; mission: ${socialScenario.mission || "complete a meaningful exchange"}`
     : `a spontaneous call before work about ${profile?.domain || "the learner's real day"}`;
+  const scenario = voiceTargets[0]
+    ? `${baseScenario}; ask a NEW transfer question that makes the learner use “${voiceTargets[0].term}” to explain, compare, justify, or predict—not repeat its definition`
+    : baseScenario;
 
   useEffect(() => {
     navigator.vibrate?.([300, 180, 300, 180, 600]);
@@ -1990,9 +2002,13 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
   const [learnerTurns, setLearnerTurns] = useState(0);
   const [speechMode, setSpeechMode] = useState("target");
   const prompt = coachPrompts[profile?.target] || coachPrompts.English;
-  const activeScenario = socialScenario
+  const voiceTargets = selectMissionTargets(learnerModel, localDay());
+  const baseScenario = socialScenario
     ? `${socialScenario.title}; speaking with ${socialScenario.relationship}; ${socialScenario.channel}; ${socialScenario.register}; challenge: ${socialScenario.pressure}; mission: ${socialScenario.mission || "complete a socially meaningful exchange"}; anchor language: ${(socialScenario.terms || []).join(", ") || "selected from the learner's response"}; technical knowledge map: ${(socialScenario.knowledgeMap || []).join(" | ") || "not applicable"}`
     : "a proactive morning accountability call before work";
+  const activeScenario = voiceTargets[0]
+    ? `${baseScenario}; use “${voiceTargets[0].term}” in a new transfer question, not the old definition question`
+    : baseScenario;
   const [messages, setMessages] = useState(() => [
     {
       role: "coach",
@@ -2426,7 +2442,11 @@ function Lesson({
   const [showFrame, setShowFrame] = useState(false);
   const answerRef = useRef(null);
   const copy = practiceContent[profile?.target] || practiceContent.Spanish;
-  const selectedMission = selectDailyMission(localDay(), profile?.target || "Spanish");
+  const selectedMission = selectAdaptiveDailyMission(
+    localDay(),
+    profile?.target || "Spanish",
+    learnerModel,
+  );
   const mission = selectedMission || {
     id: "coffee-request",
     scene: "Coffee shop",
@@ -2469,6 +2489,18 @@ function Lesson({
         answerRef.current?.focus();
         return;
       }
+      const requiredTerm = mission.personalization?.primary?.kind === "searched word"
+        ? (mission.personalization.primary.term.match(/[A-Za-z][A-Za-z'-]{2,}/g) || [])
+          .sort((a, b) => b.length - a.length)[0]
+        : null;
+      if (requiredTerm && !spoken.toLocaleLowerCase().includes(requiredTerm.toLocaleLowerCase())) {
+        setShowFrame(true);
+        setValidation(
+          `Bring your earlier word “${requiredTerm}” into this answer. Use it to make a new point rather than repeat its definition.`,
+        );
+        answerRef.current?.focus();
+        return;
+      }
     }
     setValidation("");
     setLoading(true);
@@ -2504,8 +2536,8 @@ function Lesson({
         score: depth ? Math.min(0.92, 0.72 + depth.wordCount / 120) : 0.78,
         hesitation: spoken.trim() === mission.model ? 0.05 : 0.16,
         transfer: true,
-        memoryKey: `mission:${mission.id}:${mission.chunk}`,
-        phrase: mission.chunk,
+        memoryKey: mission.personalization?.primary?.key || `mission:${mission.id}:${mission.chunk}`,
+        phrase: mission.personalization?.primary?.term || mission.chunk,
         intent: mission.intent,
         context: mission.scene,
         strategy: "position-reason-evidence-transfer",
@@ -2706,6 +2738,26 @@ function Lesson({
           </h1>
           <p className="instruction">{mission.task}</p>
           <p className="prompt">“{mission.prompt}”</p>
+          {mission.personalization && (
+            <div className="memorytransfer">
+              <span>BUILT FROM YOUR LEARNING HISTORY</span>
+              <div>
+                <b>{mission.personalization.primary.term}</b>
+                <small>
+                  {mission.personalization.primary.lookupCount > 1
+                    ? `Looked up ${mission.personalization.primary.lookupCount} times`
+                    : mission.personalization.primary.seenYesterday
+                      ? "A weak point from yesterday"
+                      : "A recent knowledge gap"}
+                  {" · "}now tested in {mission.scene.toLocaleLowerCase()}
+                </small>
+              </div>
+              <p>{mission.personalization.transferQuestion}</p>
+              {mission.personalization.secondary && (
+                <small>Optional contrast: {mission.personalization.secondary.term}</small>
+              )}
+            </div>
+          )}
           <div className="missionmoves" aria-label="Required language moves">
             {mission.moves.map((move, index) => <span key={move}>{index + 1}. {move}</span>)}
           </div>

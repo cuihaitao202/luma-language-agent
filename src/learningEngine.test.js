@@ -69,6 +69,7 @@ test("every lookup attempt becomes a knowledge gap and is upgraded in place", ()
   }, 1_000);
   assert.equal(model.memories[blindSpotKey].lookup.status, "unresolved");
   assert.equal(model.memories[blindSpotKey].experiment.stage, "knowledge-gap-detected");
+  assert.equal(model.memories[blindSpotKey].lookupCount, 1);
 
   model = saveContextualLookup(model, {
     status: "resolved",
@@ -81,7 +82,9 @@ test("every lookup attempt becomes a knowledge gap and is upgraded in place", ()
   assert.equal(model.memories[blindSpotKey].lookup.status, "resolved");
   assert.equal(model.memories[blindSpotKey].term, "slanted grating");
   assert.equal(model.memories[blindSpotKey].experiment.nextTest, "context-reconstruction");
+  assert.equal(model.memories[blindSpotKey].lookupCount, 1);
   assert.equal(learnerSnapshot(model).nextAction.lookup.term, "slanted grating");
+  assert.equal(learnerSnapshot(model).knowledgeGaps[0].term, "slanted grating");
 });
 
 test("successful transfer expands stability and records contexts", () => {

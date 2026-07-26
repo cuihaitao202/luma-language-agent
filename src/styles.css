@@ -1594,6 +1594,12 @@ nav {
 .languageframe span { color: var(--coral); font-size: 10px; font-weight: 850; letter-spacing: .1em; }
 .languageframe p { margin: 7px 0; color: var(--green); font: 19px/1.45 Georgia, serif; }
 .languageframe small { color: var(--muted); line-height: 1.45; }
+.memorytransfer { display: grid; gap: 9px; width: min(680px, 100%); margin: 14px auto; padding: 17px; border: 1px solid #244b3930; border-radius: 14px; background: #eef2eb; text-align: left; }
+.memorytransfer > span { color: var(--coral); font-size: 10px; font-weight: 850; letter-spacing: .1em; }
+.memorytransfer div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.memorytransfer b { font: 25px/1.2 Georgia, serif; }
+.memorytransfer small { color: var(--muted); line-height: 1.4; }
+.memorytransfer p { margin: 0; line-height: 1.5; }
 @keyframes callpulse {
   50% {
     box-shadow: 0 0 0 18px #49a96722;

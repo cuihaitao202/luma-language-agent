@@ -192,6 +192,23 @@ export function nextBestAction(model, now = Date.now()) {
 export function learnerSnapshot(model) {
   const safe = model || createLearnerModel();
   const action = nextBestAction(safe);
+  const knowledgeGaps = Object.values(safe.memories || {})
+    .filter((memory) => memory?.lookup?.status !== "unresolved")
+    .map((memory) => ({
+      term: memory.term || memory.phrase || memory.intent,
+      lookupCount: Number(memory.lookupCount || 0),
+      lapses: Number(memory.lapses || 0),
+      lastScore: Number(memory.lastScore ?? 0.5),
+      knownContexts: memory.contexts || [],
+      contextualMeaning: memory.lookup?.contextualMeaning || "",
+    }))
+    .filter((memory) => memory.term)
+    .sort((a, b) => (
+      b.lookupCount * 2.4 + b.lapses * 1.8 + Math.max(0, 0.7 - b.lastScore) * 5
+    ) - (
+      a.lookupCount * 2.4 + a.lapses * 1.8 + Math.max(0, 0.7 - a.lastScore) * 5
+    ))
+    .slice(0, 3);
   return {
     goal: safe.profile?.goal,
     domain: safe.profile?.domain,
@@ -199,6 +216,7 @@ export function learnerSnapshot(model) {
     focusTracks: safe.profile?.focusTracks || ["life", "ai-research", "ar-waveguide"],
     technicalDomains: safe.profile?.technicalDomains,
     localeProfile: safe.profile?.localeProfile,
+    knowledgeGaps,
     skillEstimates: Object.fromEntries(
       Object.entries(safe.skills || {}).map(([key, value]) => [
         key,
@@ -253,6 +271,9 @@ export function saveContextualLookup(model, lookup, now = Date.now()) {
     retrievalHistory: [],
   };
   existing.term = term;
+  existing.lookupCount = Number(existing.lookupCount || 0)
+    + (status === "unresolved" || !existing.lookup ? 1 : 0);
+  existing.lastLookupAt = now;
   existing.lookup = {
     status,
     sourceType: String(lookup.sourceType || (lookup.imageName ? "image" : "text")),
