@@ -695,6 +695,19 @@ async function subscribeToCallReminders(settings, profile) {
   return result.subscriptionId;
 }
 
+async function disableCallReminders() {
+  const subscriptionId = localStorage.getItem("luma-reminder-subscription-id");
+  if (subscriptionId) {
+    await fetch(reminderApiUrl("subscribe"), {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscriptionId }),
+    }).catch(() => {});
+  }
+  localStorage.removeItem("luma-reminder-subscription-id");
+  localStorage.removeItem("luma-reminder-active");
+}
+
 function downloadCallCalendar(settings) {
   const now = new Date();
   const [hour, minute] = settings.time.split(":").map(Number);
@@ -1607,7 +1620,10 @@ function CoachCallSetup({ initial, profile, close, save, test }) {
     }
   };
   const saveAndEnable = async () => {
-    if (!settings.enabled) return save({ ...settings, enabled: false });
+    if (!settings.enabled) {
+      await disableCallReminders();
+      return save({ ...settings, enabled: false });
+    }
     if (reminderActive || await enable()) save({ ...settings, enabled: true });
   };
   return (
