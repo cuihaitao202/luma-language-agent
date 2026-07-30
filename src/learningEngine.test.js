@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   createLearnerModel,
   learnerSnapshot,
+  gradeLookupMemory,
   learningPlan,
+  lookupReviewQueue,
   nextBestAction,
   practiceTechnique,
   recentLookupHistory,
@@ -105,6 +107,39 @@ test("lookup history keeps the newest one hundred questions", () => {
   assert.equal(model.lookupHistory.length, 100);
   assert.equal(recentLookupHistory(model, 50).length, 50);
   assert.equal(recentLookupHistory(model, 100)[0].term, "term 104");
+});
+
+test("lookup review queue puts due weak lookups first", () => {
+  let model = createLearnerModel();
+  model = saveContextualLookup(model, {
+    term: "dormant",
+    contextualMeaning: "暂时不活跃的",
+    naturalExample: "The account remained dormant.",
+  }, 1_000);
+  model = saveContextualLookup(model, {
+    term: "accumulate",
+    contextualMeaning: "积累",
+    naturalExample: "Evidence accumulated over time.",
+  }, 2_000);
+  model.memories["lookup:dormant:general"].nextDueAt = 3_000;
+  model.memories["lookup:dormant:general"].lapses = 2;
+  const queue = lookupReviewQueue(model, 4_000, 10);
+  assert.equal(queue[0].term, "dormant");
+  assert.equal(queue[0].due, true);
+});
+
+test("review ratings schedule a real spaced repetition interval", () => {
+  const now = 1_000_000;
+  const model = saveContextualLookup(createLearnerModel(), {
+    term: "dormant",
+    contextualMeaning: "暂时不活跃的",
+  }, now - 36e5);
+  const key = "lookup:dormant:general";
+  const again = gradeLookupMemory(model, key, "again", now);
+  const easy = gradeLookupMemory(model, key, "easy", now);
+  assert.equal(again.memories[key].nextDueAt, now + 10 * 60_000);
+  assert.ok(easy.memories[key].nextDueAt >= now + 4 * 24 * 36e5);
+  assert.equal(again.memories[key].lastReviewRating, "again");
 });
 
 test("successful transfer expands stability and records contexts", () => {

@@ -1,4 +1,4 @@
-const CACHE='luma-realtime-v18';
+const CACHE='luma-realtime-v19';
 const BASE=new URL(self.registration.scope).pathname;
 const asset=path=>new URL(path,self.registration.scope).href;
 const CORE=[BASE,asset('manifest.webmanifest'),asset('luma-icon.svg')];
@@ -24,7 +24,7 @@ self.addEventListener('push',event=>{
   event.waitUntil(self.registration.showNotification(data.title||'Luma is calling',{
     body:data.body||'Your daily language call is due. Tap to answer and respond.',
     icon:asset('luma-icon.svg'),badge:asset('luma-icon.svg'),tag:'luma-daily-call',renotify:true,requireInteraction:true,
-    data:{url:asset('?coachCall=1')},actions:[{action:'answer',title:'Answer now'},{action:'later',title:'10 minutes'}]
+    data:{url:asset(data.url||'?coachCall=1')},actions:[{action:'answer',title:'Answer now'},{action:'later',title:'10 minutes'}]
   }));
 });
 
@@ -33,7 +33,8 @@ self.addEventListener('notificationclick',event=>{
   if(event.action==='later')return;
   event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{
     const existing=list.find(client=>'focus' in client);
-    if(existing){existing.navigate(asset('?coachCall=1'));return existing.focus()}
-    return clients.openWindow(asset('?coachCall=1'));
+    const destination=event.notification.data?.url||asset('?coachCall=1');
+    if(existing){existing.navigate(destination);return existing.focus()}
+    return clients.openWindow(destination);
   }));
 });

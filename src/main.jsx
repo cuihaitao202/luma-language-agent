@@ -35,7 +35,9 @@ import "./styles.css";
 import "./onboarding.css";
 import {
   createLearnerModel,
+  gradeLookupMemory,
   learnerSnapshot,
+  lookupReviewQueue,
   nextBestAction,
   recentLookupHistory,
   recordEvidence,
@@ -55,6 +57,11 @@ const scenes = [
     sub: "Ordering · small talk · confidence",
     time: "3 min",
     level: "A2 → B1",
+    relationship: "a barista before a work meeting",
+    channel: "face-to-face",
+    register: "warm and concise",
+    pressure: "a changing order, a follow-up question, and brief small talk",
+    mission: "Order precisely, handle one change, then make natural small talk without one-word answers.",
   },
   {
     id: "meeting",
@@ -63,6 +70,11 @@ const scenes = [
     sub: "Clarifying · disagreeing politely",
     time: "4 min",
     level: "B1 → B2",
+    relationship: "cross-functional coworkers",
+    channel: "live meeting",
+    register: "professional and diplomatic",
+    pressure: "interruptions, disagreement, and a request for evidence",
+    mission: "Explain your view in three connected sentences, qualify it, and respond to a challenge.",
   },
   {
     id: "airport",
@@ -71,6 +83,11 @@ const scenes = [
     sub: "Listening under pressure",
     time: "3 min",
     level: "A2 → B1",
+    relationship: "airline staff and another passenger",
+    channel: "noisy announcement plus face-to-face",
+    register: "polite and urgent",
+    pressure: "a gate change, incomplete information, and little time",
+    mission: "Confirm what changed, ask two precise questions, and explain your plan to another passenger.",
   },
 ];
 const socialScenarios = [
@@ -432,11 +449,29 @@ const readJson = (key, fallback) => {
   }
 };
 const localDay = () => new Date().toLocaleDateString("en-CA");
+const recordStudyActivity = () => {
+  const days = readJson("luma-study-days", []);
+  const next = [localDay(), ...days.filter((day) => day !== localDay())].slice(0, 90);
+  localStorage.setItem("luma-study-days", JSON.stringify(next));
+  return next;
+};
+const currentStudyStreak = () => {
+  const days = new Set(readJson("luma-study-days", []));
+  let cursor = new Date();
+  let count = 0;
+  if (!days.has(cursor.toLocaleDateString("en-CA"))) cursor.setDate(cursor.getDate() - 1);
+  while (days.has(cursor.toLocaleDateString("en-CA"))) {
+    count += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return count;
+};
 const publicCallUrl = () =>
   `${location.origin}${location.pathname}?coachCall=1`;
 const hostedCoachOrigin =
   "https://luma-language-agent.taotao918918918.chatgpt.site";
 const publicRealtimeOrigin = "https://api.aimodelapi.ai";
+const reminderApiUrl = (path) => `${publicRealtimeOrigin}/v1/luma/reminders/${path}`;
 const practiceSessionId = crypto.randomUUID();
 const coachApiUrl = () =>
   location.hostname.endsWith("github.io")
@@ -605,6 +640,59 @@ async function registerLumaWorker() {
   });
   registration.update().catch(() => {});
   return registration;
+}
+
+const isStandaloneApp = () =>
+  window.matchMedia?.("(display-mode: standalone)")?.matches
+  || window.navigator.standalone === true;
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const raw = atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
+async function subscribeToCallReminders(settings, profile) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    throw new Error("This browser does not support background reminders. Use the calendar alarm instead.");
+  }
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIos && !isStandaloneApp()) {
+    throw new Error("On iPhone, first tap Share → Add to Home Screen, then open Luma from its new icon and enable reminders.");
+  }
+  const permission = Notification.permission === "default"
+    ? await Notification.requestPermission()
+    : Notification.permission;
+  if (permission !== "granted") throw new Error("Notifications are blocked in your phone settings.");
+  const registration = await registerLumaWorker();
+  await navigator.serviceWorker.ready;
+  const configResponse = await fetch(reminderApiUrl("config"), { cache: "no-store" });
+  const config = await configResponse.json();
+  if (!configResponse.ok || !config.enabled || !config.publicKey) {
+    throw new Error("The reminder server is not ready. Use the calendar alarm for now.");
+  }
+  const existing = await registration.pushManager.getSubscription();
+  const subscription = existing || await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(config.publicKey),
+  });
+  const response = await fetch(reminderApiUrl("subscribe"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      subscription: subscription.toJSON(),
+      time: settings.time,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      retryMinutes: settings.retryMinutes,
+      retries: settings.retries,
+      targetLanguage: profile?.target || "language",
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.subscriptionId) throw new Error("The reminder could not be saved on the server.");
+  localStorage.setItem("luma-reminder-subscription-id", result.subscriptionId);
+  localStorage.setItem("luma-reminder-active", "1");
+  return result.subscriptionId;
 }
 
 function downloadCallCalendar(settings) {
@@ -804,6 +892,7 @@ function App() {
     }));
   };
   const captureEvidence = (evidence) => {
+    recordStudyActivity();
     setLearnerModel((current) => {
       const next = recordEvidence(current || createLearnerModel(profile || {}), evidence);
       localStorage.setItem("luma-learner-model", JSON.stringify(next));
@@ -841,6 +930,15 @@ function App() {
     localStorage.removeItem("luma-call-miss-count");
     setCallCompleteDay(day);
     setIncomingCall(false);
+    recordStudyActivity();
+    const subscriptionId = localStorage.getItem("luma-reminder-subscription-id");
+    if (subscriptionId) {
+      fetch(reminderApiUrl("complete"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscriptionId }),
+      }).catch(() => {});
+    }
   };
   const missCall = () => {
     const count = Number(localStorage.getItem("luma-call-miss-count") || 0) + 1;
@@ -892,6 +990,30 @@ function App() {
           setView("lesson");
           setLesson(0);
         }}
+        review={() => setView("review")}
+      />
+    );
+  if (view === "review")
+    return (
+      <LookupReviewDeck
+        profile={profile}
+        learnerModel={learnerModel}
+        back={() => setView("memory")}
+        grade={(memoryKey, rating) => {
+          recordStudyActivity();
+          setLearnerModel((current) => {
+            const next = gradeLookupMemory(current, memoryKey, rating);
+            localStorage.setItem("luma-learner-model", JSON.stringify(next));
+            syncCloudLearning(profile, next, {
+              type: "lookup-review",
+              skill: "reading",
+              score: { again: 0.2, hard: 0.55, good: 0.82, easy: 0.96 }[rating] || 0.55,
+              memoryKey,
+              strategy: `spaced-review-${rating}`,
+            }).catch(() => {});
+            return next;
+          });
+        }}
       />
     );
   if (view === "lookup")
@@ -899,8 +1021,10 @@ function App() {
       <ContextLookup
         profile={profile}
         learnerModel={learnerModel}
+        review={() => setView("review")}
         back={() => setView("home")}
         save={(lookup) => {
+          recordStudyActivity();
           setLearnerModel((current) => {
             const next = saveContextualLookup(current || createLearnerModel(profile || {}), lookup);
             localStorage.setItem("luma-learner-model", JSON.stringify(next));
@@ -951,6 +1075,7 @@ function App() {
       {showCallSetup && (
         <CoachCallSetup
           initial={callSettings}
+          profile={profile}
           close={() => setShowCallSetup(false)}
           save={saveCallSettings}
           test={() => setIncomingCall(true)}
@@ -1166,10 +1291,15 @@ function Home({
   setupCall,
   answerCall,
   learnerModel,
+  review,
   startSocial,
   forgetCloudLearning,
 }) {
   const action = nextBestAction(learnerModel);
+  const reviewQueue = lookupReviewQueue(learnerModel, Date.now(), 10);
+  const dueReviewCount = reviewQueue.filter((item) => item.due).length;
+  const reminderActive = localStorage.getItem("luma-reminder-active") === "1";
+  const studyStreak = currentStudyStreak();
   const todayMission = selectAdaptiveDailyMission(
     localDay(),
     profile?.target || "Spanish",
@@ -1187,9 +1317,9 @@ function Home({
             <Globe2 /> {profile?.target || "Choose language"}
           </button>
           <span className="streak">
-            <Flame size={15} fill="currentColor" /> 8 day rhythm
+            <Flame size={15} fill="currentColor" /> {studyStreak ? `${studyStreak} day rhythm` : "Start today"}
           </span>
-          <button className="avatar">ME</button>
+          <button type="button" className="avatar" onClick={configure} aria-label="Open my learning profile">ME</button>
         </div>
       </nav>
       <section className="hero">
@@ -1269,6 +1399,11 @@ function Home({
         </div>
         <div>
           <span className="adaptivetag">{profile?.cloudLearning ? "CLOUD MEMORY ON" : "DEVICE MEMORY ONLY"}</span>
+          {reviewQueue.length > 0 && (
+            <button type="button" className="textbtn" onClick={review}>
+              Review {dueReviewCount || reviewQueue.length} weak {dueReviewCount === 1 ? "memory" : "memories"} <ArrowRight size={16} />
+            </button>
+          )}
           {profile?.cloudLearning && (
             <button className="textbtn" onClick={forgetCloudLearning}>Delete cloud learning data</button>
           )}
@@ -1311,7 +1446,9 @@ function Home({
           </h2>
           <p>
             {callSettings.enabled
-              ? `Daily call at ${callSettings.time}. If missed, Luma retries every ${callSettings.retryMinutes} minutes until you respond.`
+              ? reminderActive
+                ? `Background reminder active at ${callSettings.time}. If missed, Luma retries every ${callSettings.retryMinutes} minutes until you respond.`
+                : `Time saved for ${callSettings.time}, but background reminders still need phone setup. Open Call settings to finish.`
               : "Turn on a daily call that puts speaking practice directly into your phone schedule."}
           </p>
         </div>
@@ -1342,7 +1479,12 @@ function Home({
             <button
               className={"scene " + (i === 0 ? "featured" : "")}
               key={s.id}
-              onClick={start}
+              onClick={() => startSocial({
+                ...s,
+                locale: profile?.localeProfile?.label || "your local community",
+                localeCode: profile?.localeProfile?.id,
+                audience: profile?.localeProfile?.audience,
+              })}
             >
               <div className="sceneicon">{s.icon}</div>
               <div>
@@ -1439,23 +1581,34 @@ function Home({
   );
 }
 
-function CoachCallSetup({ initial, close, save, test }) {
+function CoachCallSetup({ initial, profile, close, save, test }) {
   const [settings, setSettings] = useState({ ...initial });
   const [notice, setNotice] = useState("");
+  const [working, setWorking] = useState(false);
+  const [reminderActive, setReminderActive] = useState(
+    () => localStorage.getItem("luma-reminder-active") === "1",
+  );
   const enable = async () => {
-    let permission = "unsupported";
-    if ("Notification" in window) {
-      permission = Notification.permission;
-      if (permission === "default")
-        permission = await Notification.requestPermission();
+    setWorking(true);
+    setNotice("Connecting this phone to the reminder server…");
+    try {
+      await subscribeToCallReminders({ ...settings, enabled: true }, profile);
+      setSettings((s) => ({ ...s, enabled: true }));
+      setReminderActive(true);
+      setNotice("Background reminders are active on this phone. You may close Luma; tap the call notification to answer.");
+      return true;
+    } catch (error) {
+      setReminderActive(false);
+      localStorage.removeItem("luma-reminder-active");
+      setNotice(error instanceof Error ? error.message : "Background reminders could not be enabled.");
+      return false;
+    } finally {
+      setWorking(false);
     }
-    await registerLumaWorker().catch(() => {});
-    setSettings((s) => ({ ...s, enabled: true }));
-    setNotice(
-      permission === "granted"
-        ? "Notifications are allowed. Add the recurring calendar call next."
-        : "Browser notifications were not allowed. The calendar call still works.",
-    );
+  };
+  const saveAndEnable = async () => {
+    if (!settings.enabled) return save({ ...settings, enabled: false });
+    if (reminderActive || await enable()) save({ ...settings, enabled: true });
   };
   return (
     <div className="modalback">
@@ -1512,15 +1665,19 @@ function CoachCallSetup({ initial, close, save, test }) {
             </small>
           </span>
         </div>
+        <div className={`reminderhealth ${reminderActive ? "active" : ""}`}>
+          <Bell />
+          <span><b>{reminderActive ? "Background reminders active" : "Background reminder not connected"}</b><small>{reminderActive ? "Server scheduling works even when the app is closed." : "A saved time alone cannot wake a closed browser."}</small></span>
+        </div>
         {notice && <div className="notice">{notice}</div>}
-        <button className="primary full" onClick={enable}>
-          <Bell /> Allow reminders
+        <button className="primary full" onClick={enable} disabled={working}>
+          <Bell /> {working ? "Connecting…" : reminderActive ? "Update reminder schedule" : "Enable real phone reminders"}
         </button>
         <button
           className="secondary full"
           onClick={() => downloadCallCalendar(settings)}
         >
-          <CalendarPlus /> Add the daily call to my phone calendar
+          <CalendarPlus /> Add calendar alarm fallback
         </button>
         {initial.enabled && (
           <button
@@ -1534,7 +1691,7 @@ function CoachCallSetup({ initial, close, save, test }) {
           <button className="textbtn" onClick={test}>
             Test a call now
           </button>
-          <button className="primary" onClick={() => save(settings)}>
+          <button className="primary" onClick={saveAndEnable} disabled={working}>
             Save proactive mode <ArrowRight />
           </button>
         </div>
@@ -3334,10 +3491,12 @@ function ContextLookup({ profile, learnerModel, back, save }) {
   );
 }
 
-function Memory({ profile, learnerModel, back, start }) {
+function Memory({ profile, learnerModel, back, start, review }) {
   const copy = practiceContent[profile?.target] || practiceContent.Spanish;
   const memories = Object.values(learnerModel?.memories || {});
   const action = nextBestAction(learnerModel);
+  const reviewQueue = lookupReviewQueue(learnerModel, Date.now(), 10);
+  const dueCount = reviewQueue.filter((item) => item.due).length;
   return (
     <main className="memoryShell">
       <nav>
@@ -3401,8 +3560,10 @@ function Memory({ profile, learnerModel, back, start }) {
               <u />
             </i>
           </div>
-          <button type="button" className="primary" onClick={start}>
-            Practice now · 90 sec <ArrowRight />
+          <button type="button" className="primary" onClick={reviewQueue.length ? review : start}>
+            {reviewQueue.length
+              ? `Review ${dueCount || reviewQueue.length} ${dueCount === 1 ? "memory" : "memories"}`
+              : "Practice now · 90 sec"} <ArrowRight />
           </button>
           <div className="due">
             <Clock3 />
@@ -3413,6 +3574,85 @@ function Memory({ profile, learnerModel, back, start }) {
           </div>
         </div>
       </div>
+    </main>
+  );
+}
+
+function LookupReviewDeck({ profile, learnerModel, back, grade }) {
+  const [keys] = useState(() => lookupReviewQueue(learnerModel, Date.now(), 10).map((item) => item.key));
+  const [index, setIndex] = useState(0);
+  const [revealed, setRevealed] = useState(false);
+  const [answer, setAnswer] = useState("");
+  const memory = learnerModel?.memories?.[keys[index]];
+  const total = keys.length;
+  const term = memory?.term || memory?.phrase || "";
+  const lookup = memory?.lookup || {};
+  const source = lookup.sourceText || lookup.originalQuestion || lookup.naturalExample || memory?.phrase || "";
+  const masked = term
+    ? source.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "_____")
+    : source;
+  const listen = () => {
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(lookup.pronunciationText || term);
+    utterance.lang = speechLocaleForLanguage(profile?.target || lookup.pronunciationLanguage);
+    utterance.rate = 0.82;
+    speechSynthesis.speak(utterance);
+  };
+  if (!total) {
+    return (
+      <main className="reviewShell">
+        <nav><button className="iconbtn" onClick={back}><ChevronLeft /></button><b>Memory review</b></nav>
+        <section className="reviewempty"><BookOpen /><h1>No reviewed lookups yet.</h1><p>Words, sentences, and photos you look up will return here before you forget them.</p><button className="primary" onClick={back}>Back to memory</button></section>
+      </main>
+    );
+  }
+  if (!memory) {
+    return (
+      <main className="reviewShell">
+        <section className="reviewempty"><Check /><h1>Review complete.</h1><p>You actively recalled {total} recent knowledge gaps. Their next intervals now adapt to your answers.</p><button className="primary" onClick={back}>See my memory</button></section>
+      </main>
+    );
+  }
+  const confidence = memory.lastScore >= 0.8 ? "Strong" : memory.lastScore >= 0.55 ? "Building" : "Weak";
+  const choose = (rating) => {
+    grade(memory.key, rating);
+    setIndex((value) => value + 1);
+    setRevealed(false);
+    setAnswer("");
+  };
+  return (
+    <main className="reviewShell">
+      <nav>
+        <button className="iconbtn" onClick={back}><ChevronLeft /></button>
+        <div><b>Active recall</b><small>{index + 1} / {total}</small></div>
+        <span className={`memorystrength ${confidence.toLowerCase()}`}>{confidence}</span>
+      </nav>
+      <section className="reviewcard">
+        <span className="kicker">REBUILD THE MEANING BEFORE YOU LOOK</span>
+        <h1>{lookup.retrievalPrompt || `What did “${term}” mean in this context?`}</h1>
+        {masked && <blockquote>{masked}</blockquote>}
+        <label htmlFor="review-answer">Say it in {profile?.nativeLanguage || "your strongest language"}, or use it in {profile?.target || "the language you are learning"}.</label>
+        <textarea id="review-answer" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Type what you remember. Effort matters more than perfection." />
+        {!revealed ? (
+          <button className="primary full" onClick={() => setRevealed(true)}>Reveal and compare <ArrowRight /></button>
+        ) : (
+          <>
+            <article className="reviewanswer">
+              <div><h2>{term}</h2><button type="button" onClick={listen}><Volume2 /> Listen</button></div>
+              {lookup.phonetic && <strong>{lookup.phonetic}</strong>}
+              <p>{lookup.contextualMeaning || lookup.nativeExplanation}</p>
+              {lookup.naturalExample && <small>{lookup.naturalExample}</small>}
+            </article>
+            <p className="gradeprompt">How well did you retrieve it before revealing?</p>
+            <div className="gradegrid">
+              <button onClick={() => choose("again")}><b>Again</b><small>10 min</small></button>
+              <button onClick={() => choose("hard")}><b>Hard</b><small>1 day</small></button>
+              <button onClick={() => choose("good")}><b>Good</b><small>adaptive</small></button>
+              <button onClick={() => choose("easy")}><b>Easy</b><small>4+ days</small></button>
+            </div>
+          </>
+        )}
+      </section>
     </main>
   );
 }

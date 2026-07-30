@@ -272,6 +272,55 @@ export function recentLookupHistory(model, limit = 50) {
     .slice(0, safeLimit);
 }
 
+export function lookupReviewQueue(model, now = Date.now(), limit = 10) {
+  const safeLimit = Math.max(1, Math.min(30, Number(limit) || 10));
+  return Object.values(model?.memories || {})
+    .filter((memory) => memory?.lookup?.status === "resolved")
+    .map((memory) => {
+      const recall = retrievability(memory, now);
+      const overdueHours = Math.max(0, now - Number(memory.nextDueAt || 0)) / 36e5;
+      const weakness =
+        (1 - recall) * 5
+        + Math.min(3, Number(memory.lapses || 0)) * 1.2
+        + Math.min(4, Number(memory.lookupCount || 0)) * 0.35
+        + Math.max(0, 0.72 - Number(memory.lastScore ?? 0.45)) * 3
+        + Math.min(3, overdueHours / 24);
+      return {
+        ...memory,
+        recall,
+        due: Number(memory.nextDueAt || 0) <= now,
+        reviewPriority: weakness,
+      };
+    })
+    .sort((a, b) => Number(b.due) - Number(a.due)
+      || b.reviewPriority - a.reviewPriority
+      || Number(b.lastLookupAt || 0) - Number(a.lastLookupAt || 0))
+    .slice(0, safeLimit);
+}
+
+export function gradeLookupMemory(model, memoryKey, rating, now = Date.now()) {
+  const current = model?.memories?.[memoryKey];
+  if (!current?.lookup || current.lookup.status !== "resolved") return structuredClone(model);
+  const grade = {
+    again: { score: 0.2, hints: 2, hours: 1 / 6 },
+    hard: { score: 0.55, hints: 1, hours: 24 },
+    good: { score: 0.82, hints: 0, hours: Math.max(48, Number(current.stabilityHours || 8) * 0.72) },
+    easy: { score: 0.96, hints: 0, hours: Math.max(96, Number(current.stabilityHours || 8) * 1.2) },
+  }[String(rating).toLowerCase()] || { score: 0.55, hints: 1, hours: 24 };
+  const next = recordEvidence(model, {
+    skill: "reading",
+    score: grade.score,
+    hints: grade.hints,
+    transfer: rating === "easy",
+    memoryKey,
+    phrase: current.phrase,
+    context: current.contexts?.at(-1) || current.lookup.detectedDomain || "context lookup review",
+  }, now);
+  next.memories[memoryKey].nextDueAt = now + grade.hours * 36e5;
+  next.memories[memoryKey].lastReviewRating = String(rating).toLowerCase();
+  return next;
+}
+
 export function saveContextualLookup(model, lookup, now = Date.now()) {
   const next = structuredClone(model || createLearnerModel());
   const status = lookup?.status === "unresolved" ? "unresolved" : "resolved";
