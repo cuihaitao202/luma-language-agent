@@ -708,6 +708,25 @@ async function disableCallReminders() {
   localStorage.removeItem("luma-reminder-active");
 }
 
+async function sendTestCallReminder(subscriptionId = localStorage.getItem("luma-reminder-subscription-id")) {
+  if (!subscriptionId) throw new Error("This phone is not connected to the reminder server yet.");
+  const response = await fetch(reminderApiUrl("test"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subscriptionId }),
+  });
+  if (!response.ok) {
+    if (response.status === 404) {
+      localStorage.removeItem("luma-reminder-subscription-id");
+      localStorage.removeItem("luma-reminder-active");
+    }
+    throw new Error(response.status === 404
+      ? "This phone's old reminder connection has expired. Enable it again below."
+      : "The test notification could not be delivered. Please enable reminders again.");
+  }
+  return true;
+}
+
 function downloadCallCalendar(settings) {
   const now = new Date();
   const [hour, minute] = settings.time.split(":").map(Number);
@@ -1447,7 +1466,7 @@ function Home({
           </button>
         </div>
       </section>
-      <section className="callstrip">
+      <section className={`callstrip ${callSettings.enabled && !reminderActive ? "needssetup" : ""}`}>
         <div>
           <span className="callbadge">
             <PhoneCall /> ACTIVE COACH CALL
@@ -1468,7 +1487,7 @@ function Home({
         <div className="callactions">
           <button className="secondary" onClick={setupCall}>
             <Settings2 />{" "}
-            {callSettings.enabled ? "Call settings" : "Turn on daily calls"}
+            {callSettings.enabled && !reminderActive ? "Finish phone setup" : callSettings.enabled ? "Call settings" : "Turn on daily calls"}
           </button>
           {callSettings.enabled && !callDone && (
             <button className="primary" onClick={answerCall}>
@@ -1605,16 +1624,31 @@ function CoachCallSetup({ initial, profile, close, save, test }) {
     setWorking(true);
     setNotice("Connecting this phone to the reminder server…");
     try {
-      await subscribeToCallReminders({ ...settings, enabled: true }, profile);
+      const subscriptionId = await subscribeToCallReminders({ ...settings, enabled: true }, profile);
+      await sendTestCallReminder(subscriptionId);
       setSettings((s) => ({ ...s, enabled: true }));
       setReminderActive(true);
-      setNotice("Background reminders are active on this phone. You may close Luma; tap the call notification to answer.");
+      setNotice("A test call was sent to this phone. When it appears, tap it to answer. Daily reminders will use the same channel.");
       return true;
     } catch (error) {
       setReminderActive(false);
       localStorage.removeItem("luma-reminder-active");
       setNotice(error instanceof Error ? error.message : "Background reminders could not be enabled.");
       return false;
+    } finally {
+      setWorking(false);
+    }
+  };
+  const testBackgroundReminder = async () => {
+    setWorking(true);
+    setNotice("Sending a real background test call…");
+    try {
+      await sendTestCallReminder();
+      setReminderActive(true);
+      setNotice("Test call sent. It should appear as a phone notification within a few seconds; tap it to answer.");
+    } catch (error) {
+      setReminderActive(false);
+      setNotice(error instanceof Error ? error.message : "The test notification failed.");
     } finally {
       setWorking(false);
     }
@@ -1689,6 +1723,11 @@ function CoachCallSetup({ initial, profile, close, save, test }) {
         <button className="primary full" onClick={enable} disabled={working}>
           <Bell /> {working ? "Connecting…" : reminderActive ? "Update reminder schedule" : "Enable real phone reminders"}
         </button>
+        {reminderActive && (
+          <button className="secondary full" onClick={testBackgroundReminder} disabled={working}>
+            <PhoneCall /> Send a real test notification now
+          </button>
+        )}
         <button
           className="secondary full"
           onClick={() => downloadCallCalendar(settings)}
@@ -1705,7 +1744,7 @@ function CoachCallSetup({ initial, profile, close, save, test }) {
         )}
         <div className="setupfooter">
           <button className="textbtn" onClick={test}>
-            Test a call now
+            Open a call on this screen
           </button>
           <button className="primary" onClick={saveAndEnable} disabled={working}>
             Save proactive mode <ArrowRight />

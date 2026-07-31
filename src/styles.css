@@ -891,6 +891,12 @@ nav {
   font-size: 13px;
   line-height: 1.55;
 }
+.callstrip.needssetup {
+  border: 2px solid #d9684c;
+  background: linear-gradient(135deg, #fff1eb, #f7e7de);
+  box-shadow: 0 16px 40px rgba(179, 77, 49, .16);
+}
+.callstrip.needssetup .callbadge { color: #a63f28; }
 .callbadge {
   display: flex;
   align-items: center;
