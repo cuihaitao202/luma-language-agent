@@ -788,7 +788,10 @@ function App() {
       return null;
     }
   })();
-  const [view, setView] = useState("home");
+  const [view, setView] = useState(() => {
+    const requested = new URLSearchParams(location.search).get("view");
+    return ["review", "memory", "lookup"].includes(requested) ? requested : "home";
+  });
   const [profile, setProfile] = useState(saved);
   const [learnerModel, setLearnerModel] = useState(() =>
     readJson("luma-learner-model", createLearnerModel(saved || {})),
@@ -1423,7 +1426,11 @@ function Home({
           </div>
         </div>
       </section>
-      <section className="adaptivebrief">
+      <section
+        className={`adaptivebrief ${reviewQueue.length ? "actionable" : ""}`}
+        aria-label={reviewQueue.length ? `Review ${dueReviewCount || reviewQueue.length} weak memories` : undefined}
+        onClick={reviewQueue.length ? review : undefined}
+      >
         <div>
           <span className="kicker">WHY THIS, WHY NOW</span>
           <h2>{action.mode === "transfer-retrieval" ? "A memory is ready to become usable." : `Luma needs one piece of ${action.skill} evidence.`}</h2>
@@ -1432,12 +1439,20 @@ function Home({
         <div>
           <span className="adaptivetag">{profile?.cloudLearning ? "CLOUD MEMORY ON" : "DEVICE MEMORY ONLY"}</span>
           {reviewQueue.length > 0 && (
-            <button type="button" className="textbtn" onClick={review}>
+            <a
+              className="textbtn reviewlink"
+              href={`${location.pathname}?view=review`}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                review();
+              }}
+            >
               Review {dueReviewCount || reviewQueue.length} weak {dueReviewCount === 1 ? "memory" : "memories"} <ArrowRight size={16} />
-            </button>
+            </a>
           )}
           {profile?.cloudLearning && (
-            <button className="textbtn" onClick={forgetCloudLearning}>Delete cloud learning data</button>
+            <button className="textbtn" onClick={(event) => { event.stopPropagation(); forgetCloudLearning(); }}>Delete cloud learning data</button>
           )}
         </div>
       </section>

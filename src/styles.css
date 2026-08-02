@@ -836,6 +836,20 @@ nav {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+  position: relative;
+  z-index: 3;
+}
+.adaptivebrief.actionable { cursor: pointer; touch-action: manipulation; }
+.adaptivebrief.actionable:active { transform: scale(.992); }
+.reviewlink {
+  position: relative;
+  z-index: 5;
+  min-height: 48px;
+  margin-top: 8px;
+  padding: 10px 0;
+  text-decoration: none;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 .sociallab { max-width: 1120px; margin: 0 auto 70px; }
 .sociallab .sectiontitle p { max-width: 650px; color: var(--muted); font-size: 13px; line-height: 1.55; }
