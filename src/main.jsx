@@ -1772,20 +1772,22 @@ function Home({
       </section>
       <section className="proof">
         <span className="kicker">THE LUMA LOOP</span>
-        <h2>One moment. Four skills. Zero studying.</h2>
+        <h2>One moment. Four skills. Choose what to train.</h2>
+        <p className="loopintro">Each step opens a real exercise using your language, recent searches, and weak memories.</p>
         <div className="loop">
           {[
-            ["01", "Hear", "Meaning before translation"],
-            ["02", "Say", "Your words, not a script"],
-            ["03", "Refine", "One useful correction"],
-            ["04", "Reappear", "Right before you forget"],
-          ].map((x, i) => (
-            <div className="loopitem" key={x[1]}>
-              <b>{x[0]}</b>
-              <h3>{x[1]}</h3>
-              <p>{x[2]}</p>
-              {i < 3 && <ArrowRight />}
-            </div>
+            { number: "01", title: "Hear", description: "Meaning before translation", action: answerCall, cta: "Start live listening", icon: AudioLines },
+            { number: "02", title: "Say", description: "Your words, not a script", action: start, cta: `Open today’s ${profile?.minutes || 3}-min mission`, icon: Mic },
+            { number: "03", title: "Refine", description: "One useful correction", action: lookup, cta: "Check a word or sentence", icon: Sparkles },
+            { number: "04", title: "Reappear", description: "Right before you forget", action: review, cta: reviewQueue.length ? `Review ${reviewQueue.length} memories` : "Open the review deck", icon: Repeat2 },
+          ].map((item) => (
+            <button type="button" className="loopitem" key={item.title} onClick={item.action} aria-label={`${item.title}: ${item.cta}`}>
+              <span className="loopnumber">{item.number}</span>
+              <item.icon className="loopicon" />
+              <h3>{item.title}</h3>
+              <p>{item.description}</p>
+              <span className="loopcta">{item.cta} <ArrowRight /></span>
+            </button>
           ))}
         </div>
       </section>
