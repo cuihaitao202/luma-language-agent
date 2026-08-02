@@ -16,6 +16,7 @@ export function createLearnerModel(profile = {}) {
         arOptics: ["array waveguide", "PVG volume holographic waveguide", "slanted and gradient SRG"],
       },
       localeProfile: profile.localeProfile || null,
+      preferredSkill: profile.preferredSkill || "adaptive",
     },
     skills: Object.fromEntries(
       SKILLS.map((skill) => [skill, { estimate: 0.45, evidence: 0 }]),
@@ -156,6 +157,9 @@ export function nextBestAction(model, now = Date.now()) {
   const safe = model || createLearnerModel();
   const weakSkill = Object.entries(safe.skills || {})
     .sort((a, b) => a[1].estimate - b[1].estimate)[0]?.[0] || "speaking";
+  const preferredSkill = SKILLS.includes(safe.profile?.preferredSkill)
+    ? safe.profile.preferredSkill
+    : weakSkill;
   const memories = Object.values(safe.memories || {});
   const due = memories
     .map((memory) => {
@@ -176,16 +180,16 @@ export function nextBestAction(model, now = Date.now()) {
     }
     return {
       mode: "transfer-retrieval",
-      skill: weakSkill,
+      skill: preferredSkill,
       memory: due,
       reason: `Recall “${due.phrase}” in a new situation before it fades.`,
     };
   }
   return {
     mode: "diagnostic-mission",
-    skill: weakSkill,
+    skill: preferredSkill,
     memory: due || null,
-    reason: `Collect one useful piece of ${weakSkill} evidence inside a real task.`,
+    reason: `Collect one useful piece of ${preferredSkill} evidence inside a real task.`,
   };
 }
 

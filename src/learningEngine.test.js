@@ -47,6 +47,13 @@ test("late learning plans finish with a short successful retrieval", () => {
   assert.equal(plan.limits.correctionsPerTurn, 1);
 });
 
+test("an explicit practice focus changes the next mission skill", () => {
+  const model = createLearnerModel({ preferredSkill: "writing" });
+  assert.equal(nextBestAction(model).skill, "writing");
+  model.profile.preferredSkill = "adaptive";
+  assert.equal(nextBestAction(model).skill, "listening");
+});
+
 test("a contextual lookup becomes a scheduled learning memory", () => {
   const model = saveContextualLookup(createLearnerModel(), {
     term: "verdict",

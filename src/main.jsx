@@ -807,6 +807,7 @@ function App() {
     readJson("luma-call-settings", defaultCallSettings),
   );
   const [showCallSetup, setShowCallSetup] = useState(false);
+  const [showLearningControls, setShowLearningControls] = useState(false);
   const [incomingCall, setIncomingCall] = useState(
     () => new URLSearchParams(location.search).get("coachCall") === "1",
   );
@@ -918,6 +919,7 @@ function App() {
               arOptics: ["array waveguide", "PVG volume holographic waveguide", "slanted and gradient SRG"],
             },
             localeProfile: p.localeProfile,
+            preferredSkill: p.preferredSkill || current?.profile?.preferredSkill || "adaptive",
           },
         };
         localStorage.setItem("luma-learner-model", JSON.stringify(next));
@@ -952,6 +954,45 @@ function App() {
     const nextProfile = { ...profile, cloudLearning: false };
     localStorage.setItem("luma-profile", JSON.stringify(nextProfile));
     setProfile(nextProfile);
+  };
+  const applyLearningControls = async (preferences) => {
+    const nextProfile = {
+      ...profile,
+      cloudLearning: preferences.cloudLearning,
+      corpusConsent: preferences.cloudLearning && preferences.corpusConsent,
+      preferredSkill: preferences.preferredSkill,
+      minutes: preferences.minutes,
+    };
+    if (profile?.cloudLearning && !nextProfile.cloudLearning) {
+      const identity = cloudIdentity(true);
+      if (identity) {
+        await fetch(learnerApiUrl(), {
+          method: "DELETE",
+          headers: {
+            "X-Luma-Learner": identity.cloudLearnerId,
+            "X-Luma-Secret": identity.cloudSecret,
+          },
+        }).catch(() => {});
+      }
+      localStorage.removeItem("luma-cloud-learner-id");
+      localStorage.removeItem("luma-cloud-secret");
+      localStorage.removeItem("luma-cloud-prep");
+    }
+    const nextModel = {
+      ...(learnerModel || createLearnerModel(nextProfile)),
+      profile: {
+        ...(learnerModel?.profile || {}),
+        preferredSkill: nextProfile.preferredSkill,
+      },
+    };
+    if (nextProfile.cloudLearning) {
+      await syncCloudLearning(nextProfile, nextModel);
+    }
+    localStorage.setItem("luma-profile", JSON.stringify(nextProfile));
+    localStorage.setItem("luma-learner-model", JSON.stringify(nextModel));
+    setProfile(nextProfile);
+    setLearnerModel(nextModel);
+    setShowLearningControls(false);
   };
   const saveCallSettings = (s) => {
     localStorage.setItem("luma-call-settings", JSON.stringify(s));
@@ -1022,6 +1063,7 @@ function App() {
         start={() => {
           setSpoken("");
           setSpeechNotice("");
+          setSeconds((profile?.minutes || 3) * 60);
           setView("lesson");
           setLesson(0);
         }}
@@ -1057,6 +1099,7 @@ function App() {
         profile={profile}
         learnerModel={learnerModel}
         review={() => setView("review")}
+        controls={() => setShowLearningControls(true)}
         back={() => setView("home")}
         save={(lookup) => {
           recordStudyActivity();
@@ -1090,7 +1133,7 @@ function App() {
         start={() => {
           setSpoken("");
           setSpeechNotice("");
-          setSeconds(180);
+          setSeconds((profile?.minutes || 3) * 60);
           setView("lesson");
         }}
         memory={() => setView("memory")}
@@ -1100,13 +1143,26 @@ function App() {
         setupCall={() => setShowCallSetup(true)}
         answerCall={() => setIncomingCall(true)}
         learnerModel={learnerModel}
+        review={() => setView("review")}
+        controls={() => setShowLearningControls(true)}
         startSocial={(scenario) => {
           setSocialScenario(scenario);
           setIncomingCall(true);
         }}
-        forgetCloudLearning={forgetCloudLearning}
       />
       {showOnboarding && <Onboarding initial={profile} save={saveProfile} />}{" "}
+      {showLearningControls && (
+        <LearningControlCenter
+          profile={profile}
+          learnerModel={learnerModel}
+          close={() => setShowLearningControls(false)}
+          save={applyLearningControls}
+          review={() => { setShowLearningControls(false); setView("review"); }}
+          lookup={() => { setShowLearningControls(false); setView("lookup"); }}
+          call={() => { setShowLearningControls(false); setIncomingCall(true); }}
+          editProfile={() => { setShowLearningControls(false); setShowOnboarding(true); }}
+        />
+      )}{" "}
       {showCallSetup && (
         <CoachCallSetup
           initial={callSettings}
@@ -1305,10 +1361,115 @@ function Onboarding({ initial, save }) {
               localeProfile,
               cloudLearning,
               corpusConsent: cloudLearning && corpusConsent,
+              preferredSkill: initial?.preferredSkill || "adaptive",
             })
           }
         >
           Meet my Luma <ArrowRight />
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function LearningControlCenter({
+  profile,
+  learnerModel,
+  close,
+  save,
+  review,
+  lookup,
+  call,
+  editProfile,
+}) {
+  const [cloudLearning, setCloudLearning] = useState(profile?.cloudLearning === true);
+  const [corpusConsent, setCorpusConsent] = useState(profile?.corpusConsent === true);
+  const [preferredSkill, setPreferredSkill] = useState(profile?.preferredSkill || "adaptive");
+  const [minutes, setMinutes] = useState(profile?.minutes || 3);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const reviewCount = lookupReviewQueue(learnerModel, Date.now(), 100).length;
+  const focusOptions = [
+    ["adaptive", "Adaptive", "Luma targets the weakest skill"],
+    ["speaking", "Speaking", "Longer, connected answers"],
+    ["listening", "Listening", "Fast speech and key details"],
+    ["reading", "Reading", "Real text and context"],
+    ["writing", "Writing", "Clear, precise expression"],
+  ];
+  const submit = async () => {
+    setSaving(true);
+    setNotice("");
+    try {
+      await save({
+        cloudLearning,
+        corpusConsent: cloudLearning && corpusConsent,
+        preferredSkill,
+        minutes,
+      });
+    } catch (error) {
+      setNotice(error?.message || "The preference could not be saved. Please try again.");
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="modalback learningcontrolback" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="learningcontrols" role="dialog" aria-modal="true" aria-labelledby="learning-controls-title">
+        <button type="button" className="controlclose" onClick={close} aria-label="Close learning controls"><X /></button>
+        <span className="kicker">LEARNING CONTROL CENTER</span>
+        <h2 id="learning-controls-title">Your learning, under your control.</h2>
+        <p className="controllede">Change storage, focus, pace, language, or jump straight into practice. Nothing here is a one-way decision.</p>
+
+        <div className="controlsection">
+          <div className="controlheading">
+            <div><b>Learning memory</b><small>Choose where progress, weak points, and review schedules live.</small></div>
+            <span className={cloudLearning ? "statuson" : ""}>{cloudLearning ? "Cloud on" : "On this device"}</span>
+          </div>
+          <div className="storagechoices">
+            <button type="button" className={!cloudLearning ? "selected" : ""} onClick={() => setCloudLearning(false)}>
+              <span>On this device</span><small>Private to this browser. Clearing browser data removes it.</small>
+            </button>
+            <button type="button" className={cloudLearning ? "selected" : ""} onClick={() => setCloudLearning(true)}>
+              <span>Cloud memory</span><small>Keep structured progress and prepare lessons across sessions. No raw audio.</small>
+            </button>
+          </div>
+          {cloudLearning && (
+            <label className="corpuschoice">
+              <input type="checkbox" checked={corpusConsent} onChange={(event) => setCorpusConsent(event.target.checked)} />
+              <span><b>Optional teaching-research corpus</b><small>Separately allow bounded conversation text. Turn this off anytime without disabling progress memory.</small></span>
+            </label>
+          )}
+          {profile?.cloudLearning && !cloudLearning && (
+            <p className="controlwarning">Saving “On this device” stops sync and removes this learner’s cloud progress. Your local learning history stays on this phone.</p>
+          )}
+        </div>
+
+        <div className="controlsection">
+          <div className="controlheading"><div><b>Training focus</b><small>This changes the skill selected for upcoming missions.</small></div></div>
+          <div className="focuschoices">
+            {focusOptions.map(([value, label, help]) => (
+              <button type="button" key={value} className={preferredSkill === value ? "selected" : ""} onClick={() => setPreferredSkill(value)}>
+                <span>{label}</span><small>{help}</small>
+              </button>
+            ))}
+          </div>
+          <div className="pacechoice">
+            <span><b>Daily session</b><small>The mission timer follows this setting.</small></span>
+            <div>{[3, 5, 10].map((value) => <button type="button" key={value} className={minutes === value ? "selected" : ""} onClick={() => setMinutes(value)}>{value} min</button>)}</div>
+          </div>
+        </div>
+
+        <div className="controlsection">
+          <div className="controlheading"><div><b>Practice now</b><small>Every route below is a real action.</small></div></div>
+          <div className="controlquickgrid">
+            <button type="button" onClick={review}><Repeat2 /><span><b>Review memories</b><small>{reviewCount ? `${reviewCount} saved items ready` : "See your review deck"}</small></span><ArrowRight /></button>
+            <button type="button" onClick={lookup}><ScanText /><span><b>Look up in context</b><small>Type, photo, or file</small></span><ArrowRight /></button>
+            <button type="button" onClick={call}><PhoneCall /><span><b>Start a live call</b><small>Speak and listen now</small></span><ArrowRight /></button>
+            <button type="button" onClick={editProfile}><Globe2 /><span><b>Language & profile</b><small>Target, native language, goals</small></span><ArrowRight /></button>
+          </div>
+        </div>
+        {notice && <p className="controlerror" role="alert">{notice}</p>}
+        <button type="button" className="primary full controlsave" onClick={submit} disabled={saving}>
+          {saving ? "Saving…" : "Save learning preferences"} <ArrowRight />
         </button>
       </section>
     </div>
@@ -1327,8 +1488,8 @@ function Home({
   answerCall,
   learnerModel,
   review,
+  controls,
   startSocial,
-  forgetCloudLearning,
 }) {
   const action = nextBestAction(learnerModel);
   const reviewQueue = lookupReviewQueue(learnerModel, Date.now(), 10);
@@ -1371,7 +1532,7 @@ function Home({
             your brain remembers—without word lists or homework.
           </p>
           <button type="button" className="primary" onClick={start}>
-            {todayMission ? `Today: ${todayMission.scene} · 3 min` : "Start my next best 3-minute mission"} <ArrowRight size={18} />
+            {todayMission ? `Today: ${todayMission.scene} · ${profile?.minutes || 3} min` : `Start my next best ${profile?.minutes || 3}-minute mission`} <ArrowRight size={18} />
           </button>
           <section className="contextlenscard" aria-label="Context translation tools">
             <div className="contextlensintro">
@@ -1427,9 +1588,9 @@ function Home({
         </div>
       </section>
       <section
-        className={`adaptivebrief ${reviewQueue.length ? "actionable" : ""}`}
-        aria-label={reviewQueue.length ? `Review ${dueReviewCount || reviewQueue.length} weak memories` : undefined}
-        onClick={reviewQueue.length ? review : undefined}
+        className="adaptivebrief actionable"
+        aria-label="Open learning controls"
+        onClick={controls}
       >
         <div>
           <span className="kicker">WHY THIS, WHY NOW</span>
@@ -1438,6 +1599,10 @@ function Home({
         </div>
         <div>
           <span className="adaptivetag">{profile?.cloudLearning ? "CLOUD MEMORY ON" : "DEVICE MEMORY ONLY"}</span>
+          <div className="learningcontrolsummary">
+            <span>{profile?.preferredSkill && profile.preferredSkill !== "adaptive" ? `${profile.preferredSkill} focus` : "Adaptive focus"}</span>
+            <span>{profile?.minutes || 3} min/day</span>
+          </div>
           {reviewQueue.length > 0 && (
             <a
               className="textbtn reviewlink"
@@ -1451,9 +1616,9 @@ function Home({
               Review {dueReviewCount || reviewQueue.length} weak {dueReviewCount === 1 ? "memory" : "memories"} <ArrowRight size={16} />
             </a>
           )}
-          {profile?.cloudLearning && (
-            <button className="textbtn" onClick={(event) => { event.stopPropagation(); forgetCloudLearning(); }}>Delete cloud learning data</button>
-          )}
+          <button type="button" className="textbtn managelearning" onClick={(event) => { event.stopPropagation(); controls(); }}>
+            {profile?.cloudLearning ? "Manage memory & practice" : "Turn on cloud memory or customize"} <Settings2 size={16} />
+          </button>
         </div>
       </section>
       <section className="skillroutes" aria-label="Reading listening and writing practice">

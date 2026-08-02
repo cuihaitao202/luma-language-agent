@@ -841,6 +841,11 @@ nav {
 }
 .adaptivebrief.actionable { cursor: pointer; touch-action: manipulation; }
 .adaptivebrief.actionable:active { transform: scale(.992); }
+.adaptivebrief > div:last-child { min-width: 240px; }
+.learningcontrolsummary { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.learningcontrolsummary span { padding: 5px 8px; border-radius: 999px; background: #fff8; color: var(--muted); font-size: 9px; }
+.managelearning { gap: 7px; min-height: 44px; margin-top: 7px; }
+.managelearning svg { width: 15px; }
 .reviewlink {
   position: relative;
   z-index: 5;
@@ -851,6 +856,58 @@ nav {
   pointer-events: auto;
   touch-action: manipulation;
 }
+
+.learningcontrolback { z-index: 40; }
+.learningcontrols {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: 94vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 34px 38px 38px;
+  border-radius: 22px;
+  background: var(--paper);
+  box-shadow: 0 40px 100px #0005;
+}
+.controlclose { position: absolute; top: 18px; right: 18px; width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #18231d1c; border-radius: 50%; background: #fff9; cursor: pointer; }
+.controlclose svg { width: 18px; }
+.learningcontrols > h2 { max-width: 600px; margin: 12px 44px 8px 0; font-family: "Instrument Serif"; font-size: 43px; line-height: 1; font-weight: 400; }
+.controllede { margin: 0 0 22px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.controlsection { margin-top: 12px; padding: 18px; border: 1px solid #18231d16; border-radius: 15px; background: #fff8; }
+.controlheading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 13px; }
+.controlheading div, .controlheading div b, .controlheading div small { display: block; }
+.controlheading b { font-size: 13px; }
+.controlheading small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.controlheading > span { flex: 0 0 auto; padding: 6px 9px; border-radius: 999px; background: #18231d0d; color: var(--muted); font-size: 9px; font-weight: 700; }
+.controlheading > span.statuson { background: #dbeadf; color: var(--green); }
+.storagechoices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.storagechoices button, .focuschoices button { min-height: 76px; padding: 13px; border: 1px solid #18231d1c; border-radius: 10px; background: #fff; text-align: left; cursor: pointer; }
+.storagechoices span, .storagechoices small, .focuschoices span, .focuschoices small { display: block; }
+.storagechoices span, .focuschoices span { font-weight: 700; font-size: 11px; }
+.storagechoices small, .focuschoices small { margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.35; }
+.corpuschoice { display: flex; align-items: flex-start; gap: 11px; margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--sage); cursor: pointer; }
+.corpuschoice input { margin-top: 3px; }
+.corpuschoice span, .corpuschoice b, .corpuschoice small { display: block; }
+.corpuschoice b { font-size: 10px; }
+.corpuschoice small { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.controlwarning, .controlerror { padding: 10px 12px; border-radius: 9px; background: #fff1ec; color: #8c3d29; font-size: 10px; line-height: 1.45; }
+.focuschoices { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
+.pacechoice { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; }
+.pacechoice > span, .pacechoice > span b, .pacechoice > span small { display: block; }
+.pacechoice > span b { font-size: 11px; }
+.pacechoice > span small { margin-top: 2px; color: var(--muted); font-size: 9px; }
+.pacechoice > div { display: flex; gap: 6px; }
+.pacechoice button { padding: 8px 11px; border: 1px solid #18231d1c; border-radius: 8px; background: #fff; font-size: 10px; cursor: pointer; }
+.controlquickgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.controlquickgrid button { display: grid; grid-template-columns: 30px 1fr 18px; align-items: center; gap: 9px; min-height: 70px; padding: 12px; border: 1px solid #18231d1c; border-radius: 10px; background: #fff; color: var(--ink); text-align: left; cursor: pointer; }
+.controlquickgrid button > svg:first-child { width: 20px; color: var(--green); }
+.controlquickgrid button > svg:last-child { width: 15px; color: var(--muted); }
+.controlquickgrid span, .controlquickgrid b, .controlquickgrid small { display: block; }
+.controlquickgrid b { font-size: 11px; }
+.controlquickgrid small { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.controlerror { margin-bottom: 0; }
+.controlsave { margin-top: 14px; }
+.controlsave:disabled { opacity: .55; cursor: wait; }
 .sociallab { max-width: 1120px; margin: 0 auto 70px; }
 .sociallab .sectiontitle p { max-width: 650px; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .socialgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -882,6 +939,12 @@ nav {
 .adaptivetag { white-space: nowrap; color: var(--green); font-size: 9px; font-weight: 700; letter-spacing: .1em; }
 @media (max-width: 800px) {
   .adaptivebrief { margin: -18px 18px 38px; align-items: flex-start; flex-direction: column; }
+  .adaptivebrief > div:last-child { min-width: 0; width: 100%; }
+  .learningcontrols { max-height: none; padding: 28px 18px 30px; border-radius: 18px; }
+  .learningcontrols > h2 { font-size: 35px; }
+  .storagechoices, .controlquickgrid { grid-template-columns: 1fr; }
+  .focuschoices { grid-template-columns: 1fr 1fr; }
+  .pacechoice { align-items: flex-start; flex-direction: column; }
   .sociallab { margin: 0 18px 50px; }
   .socialgrid { grid-template-columns: 1fr; }
   .domainlab { margin: 0 18px 50px; }
