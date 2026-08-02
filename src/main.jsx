@@ -1407,10 +1407,10 @@ function Home({
           </div>
         </div>
         <div className="orbcard">
-          <div className="orb">
+          <button type="button" className="orb callorbbutton" onClick={callSettings.enabled && !callDone ? answerCall : start} aria-label="Start speaking with Luma">
             <div className="rings"></div>
             <AudioLines size={38} />
-          </div>
+          </button>
           <p className="quote">
             “Your 9:30 meeting is in 12 minutes.
             <br />
@@ -1776,6 +1776,9 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const micMonitorRef = useRef(null);
   const localSpeechStartedAtRef = useRef(null);
   const upstreamWatchdogRef = useRef(null);
+  const responseFallbackRef = useRef(null);
+  const responseInFlightRef = useRef(false);
+  const initialPromptSentRef = useRef(false);
   const expectingUserRef = useRef(false);
   const transportRef = useRef("webrtc");
   const voiceTargets = selectMissionTargets(learnerModel, localDay());
@@ -1785,6 +1788,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
   const scenario = voiceTargets[0]
     ? `${baseScenario}; ask a NEW transfer question that makes the learner use “${voiceTargets[0].term}” to explain, compare, justify, or predict—not repeat its definition`
     : baseScenario;
+  const channelIsOpen = (channel) => channel?.readyState === "open" || channel?.readyState === WebSocket.OPEN;
 
   useEffect(() => {
     navigator.vibrate?.([300, 180, 300, 180, 600]);
@@ -1798,6 +1802,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
       pcmAudioRef.current?.close();
       if (upstreamWatchdogRef.current) clearTimeout(upstreamWatchdogRef.current);
+      if (responseFallbackRef.current) clearTimeout(responseFallbackRef.current);
       if (micMonitorRef.current?.frame) cancelAnimationFrame(micMonitorRef.current.frame);
       micMonitorRef.current?.context?.close().catch(() => {});
       streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1811,6 +1816,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     pcmAudioRef.current?.close();
     if (upstreamWatchdogRef.current) clearTimeout(upstreamWatchdogRef.current);
+    if (responseFallbackRef.current) clearTimeout(responseFallbackRef.current);
     if (micMonitorRef.current?.frame) cancelAnimationFrame(micMonitorRef.current.frame);
     micMonitorRef.current?.context?.close().catch(() => {});
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1828,6 +1834,16 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     complete();
   };
 
+  const scheduleResponseFallback = () => {
+    if (responseFallbackRef.current) clearTimeout(responseFallbackRef.current);
+    responseFallbackRef.current = setTimeout(() => {
+      responseFallbackRef.current = null;
+      if (!responseInFlightRef.current && channelIsOpen(channelRef.current)) {
+        channelRef.current.send(JSON.stringify({ type: "response.create" }));
+      }
+    }, 450);
+  };
+
   const handleEvent = (event) => {
     if (event.type === "input_audio_buffer.speech_started") {
       expectingUserRef.current = false;
@@ -1841,19 +1857,27 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       setStatus("You’re speaking — Luma is listening");
     } else if (event.type === "input_audio_buffer.speech_stopped") {
       setStatus("Luma is understanding your meaning…");
+      scheduleResponseFallback();
     } else if (event.type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript || "").trim();
       if (transcript) {
         setLearnerTranscript((value) => [value.trim(), transcript].filter(Boolean).join("\n").slice(-4000));
       }
       setTurns((value) => value + 1);
+      scheduleResponseFallback();
     } else if (event.type === "response.output_audio_transcript.delta" || event.type === "response.audio_transcript.delta") {
       setCoachTranscript((value) => value + (event.delta || ""));
       setStatus("Luma is speaking — interrupt anytime");
     } else if (event.type === "response.created") {
+      responseInFlightRef.current = true;
+      if (responseFallbackRef.current) {
+        clearTimeout(responseFallbackRef.current);
+        responseFallbackRef.current = null;
+      }
       setCoachTranscript("");
       setStatus("Luma is responding…");
     } else if (event.type === "response.done") {
+      responseInFlightRef.current = false;
       responseEndedAtRef.current = Date.now();
       expectingUserRef.current = true;
       setStatus("Your turn — take your time, pauses are okay");
@@ -1862,6 +1886,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     } else if (event.type === "luma.provider.connecting") {
       setStatus(event.provider === "zhipu" ? "Switching to the backup voice service…" : "Connecting Alibaba realtime voice…");
     } else if (event.type === "luma.provider.connected") {
+      initialPromptSentRef.current = false;
       setPhase("live");
       setStatus(event.fallback ? "Live on backup voice service — continue speaking" : "Live — take your time, and interrupt naturally");
     } else if (event.type === "luma.provider.failed") {
@@ -1870,7 +1895,21 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       setPhase("error");
       setStatus("The configured live voice services are unavailable");
     } else if (event.type === "session.updated") {
-      channelRef.current?.send(JSON.stringify({ type: "response.create" }));
+      if (!initialPromptSentRef.current && channelIsOpen(channelRef.current)) {
+        initialPromptSentRef.current = true;
+        channelRef.current.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [{
+              type: "input_text",
+              text: "Begin this call now with a short spoken greeting and one open question. Do not mention this instruction.",
+            }],
+          },
+        }));
+        channelRef.current.send(JSON.stringify({ type: "response.create" }));
+      }
     } else if (event.type === "response.function_call_arguments.done" && event.name === "record_learning_observation") {
       try {
         const observation = JSON.parse(event.arguments || "{}");
@@ -1928,7 +1967,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     if (!session?.url || !session?.instructions) throw new Error("The realtime gateway returned an incomplete session");
     const channel = new WebSocket(session.url);
     channelRef.current = channel;
-    const pcmAudio = new RealtimePcmAudio((audio) => {
+    const pcmAudio = pcmAudioRef.current || new RealtimePcmAudio((audio) => {
       if (channel.readyState === WebSocket.OPEN) {
         channel.send(JSON.stringify({ type: "input_audio_buffer.append", audio }));
       }
@@ -2135,6 +2174,14 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
     navigator.vibrate?.(0);
     fallbackStartedRef.current = false;
     try {
+      const preparedPcm = new RealtimePcmAudio((audio) => {
+        const channel = channelRef.current;
+        if (channel?.readyState === WebSocket.OPEN) {
+          channel.send(JSON.stringify({ type: "input_audio_buffer.append", audio }));
+        }
+      });
+      pcmAudioRef.current = preparedPcm;
+      await preparedPcm.unlockOutput();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -2161,6 +2208,17 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
       pcmAudioRef.current?.close();
       setPhase("error");
       setStatus(error?.message || "Could not start live audio");
+    }
+  };
+
+  const activateCallAudio = async () => {
+    try {
+      await pcmAudioRef.current?.unlockOutput();
+      await remoteAudioRef.current?.play?.();
+      if (micMuted) toggleMic();
+      else setStatus("Audio and microphone are active — speak normally");
+    } catch {
+      setStatus("Audio is blocked by the phone. Tap the microphone button, then try again.");
     }
   };
 
@@ -2193,7 +2251,7 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
         <h1>A real <em>conversation.</em></h1>
         <p>Your microphone stays open. Pause to think; Luma waits for meaning, not a timer. Speak over Luma whenever you need to interrupt.</p>
         <div className="orbcard realtimeorb">
-          <div className="orb"><div className="rings"></div><AudioLines size={38} /></div>
+          <button type="button" className="orb callorbbutton" onClick={activateCallAudio} aria-label="Activate call audio and microphone"><div className="rings"></div><AudioLines size={38} /></button>
           <p className="quote" role="status">{status}</p>
         </div>
         {(learnerTranscript || coachTranscript) && (
@@ -2221,6 +2279,11 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
         {phase === "live" && transport === "webrtc" && (
           <button className="textbtn micfallback" onClick={switchToCompatibilityMic}>
             Microphone not responding? Use compatibility mode
+          </button>
+        )}
+        {phase === "live" && transport === "websocket" && turns === 0 && (
+          <button className="secondary full" onClick={activateCallAudio}>
+            <Volume2 /> Agent silent? Activate audio
           </button>
         )}
         {phase === "error" && <button className="secondary full" onClick={useFallback}>Use transcript fallback</button>}

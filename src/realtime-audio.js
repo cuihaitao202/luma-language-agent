@@ -72,6 +72,18 @@ export class RealtimePcmAudio {
     this.silentGain.connect(this.inputContext.destination);
   }
 
+  async unlockOutput() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) throw new Error("This browser does not support live audio playback");
+    if (!this.outputContext) this.outputContext = new AudioContext();
+    await this.outputContext.resume();
+    const silent = this.outputContext.createBuffer(1, 1, this.outputContext.sampleRate);
+    const node = this.outputContext.createBufferSource();
+    node.buffer = silent;
+    node.connect(this.outputContext.destination);
+    node.start();
+  }
+
   async play(base64Audio) {
     if (!base64Audio) return;
     const generation = this.playbackGeneration;

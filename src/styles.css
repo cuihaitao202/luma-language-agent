@@ -169,6 +169,14 @@ nav {
   position: relative;
   box-shadow: 0 20px 50px #ac503a40;
 }
+.callorbbutton {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.callorbbutton:active { transform: scale(.96); }
+.callorbbutton:focus-visible { outline: 4px solid #fff; outline-offset: 5px; }
 .rings {
   position: absolute;
   inset: -20px;
