@@ -1845,6 +1845,44 @@ nav {
 .skillroutegrid span { display: grid; gap: 5px; }
 .skillroutegrid b { font-size: 15px; }
 .skillroutegrid small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.automaticitycard { max-width: 1120px; margin: 0 auto 34px; padding: 30px 34px; border-radius: 18px; background: #17271f; color: var(--paper); display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.automaticitycard > div { max-width: 720px; }
+.automaticitycard h2 { margin: 8px 0; font-family: "Instrument Serif"; font-size: 34px; line-height: 1.08; font-weight: 400; }
+.automaticitycard p { margin: 0; color: #f7f0e4b3; font-size: 12px; line-height: 1.55; }
+.automaticitycard .primary { flex: 0 0 auto; }
+.methodchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 15px; }
+.methodchips span { padding: 6px 8px; border: 1px solid #ffffff20; border-radius: 999px; color: #f7f0e4cc; font-size: 9px; }
+.fluencyshell { min-height: 100vh; background: var(--paper); }
+.fluencynav { height: 72px; padding: 0 4vw; border-bottom: 1px solid #18231d15; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 18px; }
+.fluencynav > span { color: var(--muted); font-size: 10px; }
+.fluencyprogress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.fluencyprogress i { height: 4px; border-radius: 999px; background: #18231d14; }
+.fluencyprogress i.active { background: var(--coral); }
+.fluencypractice, .fluencycomplete { width: min(760px, calc(100% - 36px)); margin: 0 auto; padding: 58px 0 80px; }
+.fluencypractice > h1, .fluencycomplete h1 { margin: 14px 0 28px; font-family: "Instrument Serif"; font-size: 50px; line-height: 1.03; font-weight: 400; }
+.listeningcard { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 25px 0 14px; }
+.modelplay { min-height: 110px; padding: 20px; border: 1px solid #18231d1c; border-radius: 15px; background: var(--sage); color: var(--ink); display: flex; align-items: center; gap: 14px; text-align: left; cursor: pointer; }
+.modelplay > svg { width: 26px; color: var(--green); }
+.modelplay span, .modelplay b, .modelplay small { display: block; }
+.modelplay b { font-size: 12px; }
+.modelplay small { margin-top: 4px; color: var(--muted); font-size: 9px; }
+.revealscript { margin: 5px auto 18px; }
+.modelscript { margin: 18px 0; padding: 24px; border: 1px solid #18231d17; border-left: 4px solid var(--coral); border-radius: 12px; background: #fff9; font-family: "Instrument Serif"; font-size: 23px; line-height: 1.45; }
+.shadowactions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 14px 0; }
+.shadowactions button { min-height: 55px; }
+.retellprompt { margin: 22px 0 14px; padding: 22px; border-radius: 14px; background: var(--sage); }
+.retellprompt b, .retellprompt span { display: block; }
+.retellprompt b { font-family: "Instrument Serif"; font-size: 23px; font-weight: 400; }
+.retellprompt span { margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.recordwide { width: 100%; min-height: 58px; }
+.fluencypractice textarea { width: 100%; min-height: 150px; box-sizing: border-box; margin: 12px 0; padding: 16px; border: 1px solid #18231d22; border-radius: 12px; background: #fff; color: var(--ink); font: inherit; line-height: 1.55; }
+.fluencynotice { margin: 0 0 12px; padding: 10px 12px; border-radius: 9px; background: #fff1ec; color: #8c3d29; font-size: 10px; }
+.researchnote { display: flex; align-items: flex-start; gap: 8px; margin-top: 18px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.researchnote svg { width: 16px; flex: 0 0 auto; color: var(--green); }
+.fluencycomplete { padding-top: 100px; text-align: center; }
+.fluencycomplete > p { max-width: 590px; margin: 0 auto 24px; color: var(--muted); line-height: 1.6; }
+.fluencycomplete .secondary { margin-top: 9px; }
+.completeicon { width: 68px; height: 68px; margin: 0 auto 20px; border-radius: 50%; background: var(--sage); color: var(--green); display: grid; place-items: center; }
 @keyframes callpulse {
   50% {
     box-shadow: 0 0 0 18px #49a96722;
@@ -1866,6 +1904,12 @@ nav {
   .lookupmodegrid button { align-items: center; padding: 12px; }
   .skillroutes { margin: 0 18px 36px; }
   .skillroutegrid { grid-template-columns: 1fr; }
+  .automaticitycard { margin: 0 18px 30px; padding: 25px 22px; align-items: stretch; flex-direction: column; }
+  .automaticitycard h2 { font-size: 30px; }
+  .automaticitycard .primary { width: 100%; }
+  .fluencypractice, .fluencycomplete { padding-top: 38px; }
+  .fluencypractice > h1, .fluencycomplete h1 { font-size: 39px; }
+  .listeningcard, .shadowactions { grid-template-columns: 1fr; }
   .meaningpair { grid-template-columns: 1fr; }
   .termhead h2 { font-size: 44px; }
   .callstrip {

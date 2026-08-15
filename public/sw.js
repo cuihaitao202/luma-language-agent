@@ -1,4 +1,4 @@
-const CACHE='luma-realtime-v19';
+const CACHE='luma-realtime-v20';
 const BASE=new URL(self.registration.scope).pathname;
 const asset=path=>new URL(path,self.registration.scope).href;
 const CORE=[BASE,asset('manifest.webmanifest'),asset('luma-icon.svg')];

@@ -790,7 +790,7 @@ function App() {
   })();
   const [view, setView] = useState(() => {
     const requested = new URLSearchParams(location.search).get("view");
-    return ["review", "memory", "lookup"].includes(requested) ? requested : "home";
+    return ["review", "memory", "lookup", "fluency"].includes(requested) ? requested : "home";
   });
   const [profile, setProfile] = useState(saved);
   const [learnerModel, setLearnerModel] = useState(() =>
@@ -805,6 +805,9 @@ function App() {
   const [seconds, setSeconds] = useState(180);
   const [callSettings, setCallSettings] = useState(() =>
     readJson("luma-call-settings", defaultCallSettings),
+  );
+  const [reminderActive, setReminderActive] = useState(
+    () => localStorage.getItem("luma-reminder-active") === "1",
   );
   const [showCallSetup, setShowCallSetup] = useState(false);
   const [showLearningControls, setShowLearningControls] = useState(false);
@@ -824,6 +827,26 @@ function App() {
   useEffect(() => {
     registerLumaWorker().catch(() => {});
   }, []);
+  useEffect(() => {
+    if (!profile || !callSettings.enabled) return;
+    let cancelled = false;
+    const repairBackgroundReminder = async () => {
+      if (!("Notification" in window) || Notification.permission !== "granted") {
+        localStorage.removeItem("luma-reminder-active");
+        if (!cancelled) setReminderActive(false);
+        return;
+      }
+      try {
+        await subscribeToCallReminders(callSettings, profile);
+        if (!cancelled) setReminderActive(true);
+      } catch {
+        localStorage.removeItem("luma-reminder-active");
+        if (!cancelled) setReminderActive(false);
+      }
+    };
+    repairBackgroundReminder();
+    return () => { cancelled = true; };
+  }, [callSettings, profile]);
   useEffect(() => {
     const check = () => {
       if (
@@ -994,10 +1017,11 @@ function App() {
     setLearnerModel(nextModel);
     setShowLearningControls(false);
   };
-  const saveCallSettings = (s) => {
+  const saveCallSettings = (s, closeSetup = true) => {
     localStorage.setItem("luma-call-settings", JSON.stringify(s));
     setCallSettings(s);
-    setShowCallSetup(false);
+    if (!s.enabled) setReminderActive(false);
+    if (closeSetup) setShowCallSetup(false);
   };
   const completeCall = () => {
     const day = localDay();
@@ -1125,6 +1149,16 @@ function App() {
         }}
       />
     );
+  if (view === "fluency")
+    return (
+      <FluencySprint
+        profile={profile}
+        learnerModel={learnerModel}
+        back={() => setView("home")}
+        call={() => setIncomingCall(true)}
+        captureEvidence={captureEvidence}
+      />
+    );
   return (
     <>
       <Home
@@ -1138,8 +1172,10 @@ function App() {
         }}
         memory={() => setView("memory")}
         lookup={() => setView("lookup")}
+        fluency={() => setView("fluency")}
         callSettings={callSettings}
         callDone={callCompleteDay === localDay()}
+        reminderActive={reminderActive}
         setupCall={() => setShowCallSetup(true)}
         answerCall={() => setIncomingCall(true)}
         learnerModel={learnerModel}
@@ -1169,7 +1205,9 @@ function App() {
           profile={profile}
           close={() => setShowCallSetup(false)}
           save={saveCallSettings}
+          persist={(settings) => saveCallSettings(settings, false)}
           test={() => setIncomingCall(true)}
+          onReminderChange={setReminderActive}
         />
       )}{" "}
       {incomingCall && (
@@ -1480,10 +1518,12 @@ function Home({
   start,
   memory,
   lookup,
+  fluency,
   profile,
   configure,
   callSettings,
   callDone,
+  reminderActive,
   setupCall,
   answerCall,
   learnerModel,
@@ -1494,7 +1534,6 @@ function Home({
   const action = nextBestAction(learnerModel);
   const reviewQueue = lookupReviewQueue(learnerModel, Date.now(), 10);
   const dueReviewCount = reviewQueue.filter((item) => item.due).length;
-  const reminderActive = localStorage.getItem("luma-reminder-active") === "1";
   const studyStreak = currentStudyStreak();
   const todayMission = selectAdaptiveDailyMission(
     localDay(),
@@ -1646,6 +1685,19 @@ function Home({
           </button>
         </div>
       </section>
+      <section className="automaticitycard" aria-label="Automaticity fluency training">
+        <div>
+          <span className="kicker">DAILY AUTOMATICITY LOOP</span>
+          <h2>Listen until meaning lands. Speak until the language comes without translating.</h2>
+          <p>A short evidence-based cycle: understand one useful passage, shadow its rhythm, retell it from memory, then use the same language in a changed situation.</p>
+          <div className="methodchips">
+            <span>Comprehensible input</span><span>Pushed output</span><span>Task repetition</span><span>Spaced retrieval</span>
+          </div>
+        </div>
+        <button type="button" className="primary" onClick={fluency}>
+          Start today’s fluency loop <AudioLines />
+        </button>
+      </section>
       <section className={`callstrip ${callSettings.enabled && !reminderActive ? "needssetup" : ""}`}>
         <div>
           <span className="callbadge">
@@ -1795,7 +1847,7 @@ function Home({
   );
 }
 
-function CoachCallSetup({ initial, profile, close, save, test }) {
+function CoachCallSetup({ initial, profile, close, save, persist, test, onReminderChange }) {
   const [settings, setSettings] = useState({ ...initial });
   const [notice, setNotice] = useState("");
   const [working, setWorking] = useState(false);
@@ -1809,11 +1861,14 @@ function CoachCallSetup({ initial, profile, close, save, test }) {
       const subscriptionId = await subscribeToCallReminders({ ...settings, enabled: true }, profile);
       await sendTestCallReminder(subscriptionId);
       setSettings((s) => ({ ...s, enabled: true }));
+      persist?.({ ...settings, enabled: true });
       setReminderActive(true);
+      onReminderChange?.(true);
       setNotice("A test call was sent to this phone. When it appears, tap it to answer. Daily reminders will use the same channel.");
       return true;
     } catch (error) {
       setReminderActive(false);
+      onReminderChange?.(false);
       localStorage.removeItem("luma-reminder-active");
       setNotice(error instanceof Error ? error.message : "Background reminders could not be enabled.");
       return false;
@@ -1827,9 +1882,11 @@ function CoachCallSetup({ initial, profile, close, save, test }) {
     try {
       await sendTestCallReminder();
       setReminderActive(true);
+      onReminderChange?.(true);
       setNotice("Test call sent. It should appear as a phone notification within a few seconds; tap it to answer.");
     } catch (error) {
       setReminderActive(false);
+      onReminderChange?.(false);
       setNotice(error instanceof Error ? error.message : "The test notification failed.");
     } finally {
       setWorking(false);
@@ -1838,6 +1895,7 @@ function CoachCallSetup({ initial, profile, close, save, test }) {
   const saveAndEnable = async () => {
     if (!settings.enabled) {
       await disableCallReminders();
+      onReminderChange?.(false);
       return save({ ...settings, enabled: false });
     }
     if (reminderActive || await enable()) save({ ...settings, enabled: true });
@@ -2900,6 +2958,163 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
         )}
       </section>
     </div>
+  );
+}
+
+function FluencySprint({ profile, learnerModel, back, call, captureEvidence }) {
+  const [stage, setStage] = useState(0);
+  const [transcript, setTranscript] = useState("");
+  const [showScript, setShowScript] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [notice, setNotice] = useState("");
+  const recognitionRef = useRef(null);
+  const targets = selectMissionTargets(learnerModel, localDay());
+  const targetPhrase = targets[0]?.term || (profile?.target === "English" ? "what matters most is" : practiceContent[profile?.target]?.chunk || "a useful phrase");
+  const domain = profile?.domain || "a real challenge from today";
+  const language = profile?.target || "English";
+  const speechLocale = speechLocaleFor(language);
+  const modelPassage = language === "English"
+    ? `In my work, I often need to explain ${domain}. What matters most is making the main trade-off clear. For example, I would compare the immediate benefit with the long-term risk, then recommend one practical next step. The phrase “${targetPhrase}” helps me make that explanation precise.`
+    : `${practiceContent[language]?.prompt || targetPhrase}. ${targetPhrase}.`;
+  const steps = [
+    { title: "Understand", subtitle: "Listen for the whole meaning before reading." },
+    { title: "Shadow", subtitle: "Speak with the model and copy its phrasing and rhythm." },
+    { title: "Retell", subtitle: "Without the script, rebuild the meaning in your own words." },
+    { title: "Transfer", subtitle: `Use “${targetPhrase}” to explain a new example from your life.` },
+  ];
+
+  useEffect(() => {
+    if (!recording) return;
+    const timer = setInterval(() => setRecordSeconds((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [recording]);
+  useEffect(() => () => recognitionRef.current?.stop?.(), []);
+
+  const playModel = (rate = 0.84) => {
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(modelPassage);
+    utterance.lang = speechLocale;
+    utterance.rate = rate;
+    speechSynthesis.speak(utterance);
+  };
+  const startRecording = () => {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      setNotice("Continuous speech recognition is unavailable here. Type your retelling below; it still enters the memory loop.");
+      return;
+    }
+    recognitionRef.current?.stop?.();
+    const recognition = new Recognition();
+    recognition.lang = speechLocale;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => { setRecording(true); setRecordSeconds(0); setNotice("Keep going. A pause is allowed; stop only when your meaning is complete."); };
+    recognition.onend = () => setRecording(false);
+    recognition.onerror = () => { setRecording(false); setNotice("The microphone stopped. Keep the captured text or continue by typing."); };
+    recognition.onresult = (event) => {
+      let value = "";
+      for (let index = 0; index < event.results.length; index += 1) value += `${event.results[index][0].transcript} `;
+      setTranscript(value.trim());
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+  const stopRecording = () => recognitionRef.current?.stop?.();
+  const advance = () => {
+    if (stage >= 2) {
+      const enough = language === "English"
+        ? transcript.trim().split(/\s+/).filter(Boolean).length >= 12
+        : transcript.trim().length >= 20;
+      if (!enough) {
+        setNotice("Give a connected answer before moving on: make a point, add a reason, and give an example or consequence.");
+        return;
+      }
+    }
+    stopRecording();
+    setNotice("");
+    setTranscript("");
+    setRecordSeconds(0);
+    setShowScript(false);
+    setStage((value) => Math.min(4, value + 1));
+  };
+  const completeSprint = () => {
+    const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
+    captureEvidence?.({
+      type: "automaticity-loop",
+      skill: "speaking",
+      score: Math.min(0.94, 0.68 + wordCount / 180),
+      hesitation: recordSeconds > 0 && wordCount / recordSeconds < 0.7 ? 0.32 : 0.12,
+      transfer: true,
+      memoryKey: targets[0]?.key || `automaticity:${targetPhrase}`,
+      phrase: targetPhrase,
+      intent: "retrieve and transfer a useful language chunk without translating",
+      context: domain,
+      strategy: "listen-shadow-retell-transfer-spaced-retrieval",
+    });
+    advance();
+  };
+
+  if (stage === 4) return (
+    <main className="fluencyshell">
+      <section className="fluencycomplete">
+        <span className="completeicon"><Check /></span>
+        <span className="kicker">AUTOMATICITY LOOP COMPLETE</span>
+        <h1>This language will reappear before it fades.</h1>
+        <p>“{targetPhrase}” is now part of your memory schedule. Tomorrow Luma will change the situation so you must retrieve the idea rather than recite the script.</p>
+        <button type="button" className="primary full" onClick={call}>Use it in a live conversation <PhoneCall /></button>
+        <button type="button" className="secondary full" onClick={back}>Return home</button>
+      </section>
+    </main>
+  );
+
+  return (
+    <main className="fluencyshell">
+      <header className="fluencynav">
+        <button type="button" className="iconbtn" onClick={back} aria-label="Back home"><ChevronLeft /></button>
+        <div className="fluencyprogress">{steps.map((item, index) => <i key={item.title} className={index <= stage ? "active" : ""} />)}</div>
+        <span>{stage + 1}/4</span>
+      </header>
+      <section className="fluencypractice">
+        <span className="kicker">{steps[stage].title.toUpperCase()} · DAILY FLUENCY LOOP</span>
+        <h1>{steps[stage].subtitle}</h1>
+        {stage === 0 && (
+          <>
+            <div className="listeningcard">
+              <button type="button" className="modelplay" onClick={() => playModel(0.82)}><Play /><span><b>Listen for meaning</b><small>First pass · calm speed</small></span></button>
+              <button type="button" className="modelplay" onClick={() => playModel(0.94)}><Repeat2 /><span><b>Listen again</b><small>Second pass · natural speed</small></span></button>
+            </div>
+            <button type="button" className="textbtn revealscript" onClick={() => setShowScript((value) => !value)}>{showScript ? "Hide transcript" : "Reveal transcript after listening"}</button>
+            {showScript && <blockquote className="modelscript">{modelPassage}</blockquote>}
+            <button type="button" className="primary full" onClick={advance}>I understand the main idea <ArrowRight /></button>
+          </>
+        )}
+        {stage === 1 && (
+          <>
+            <blockquote className="modelscript">{modelPassage}</blockquote>
+            <div className="shadowactions">
+              <button type="button" className="secondary" onClick={() => playModel(0.76)}><Volume2 /> Play and shadow</button>
+              <button type="button" className={recording ? "primary" : "secondary"} onClick={recording ? stopRecording : startRecording}>{recording ? <MicOff /> : <Mic />} {recording ? `Stop · ${recordSeconds}s` : "Capture my shadowing"}</button>
+            </div>
+            <button type="button" className="primary full" onClick={advance}>Continue without the script <ArrowRight /></button>
+          </>
+        )}
+        {stage >= 2 && (
+          <>
+            <div className="retellprompt">
+              <b>{stage === 2 ? "Rebuild the passage from memory." : `Changed situation: explain a decision you face in ${domain}.`}</b>
+              <span>{stage === 2 ? "Keep the meaning, but do not memorize every word. Aim for 30–60 seconds." : `Use “${targetPhrase}”, then add a reason and a concrete consequence.`}</span>
+            </div>
+            <button type="button" className={recording ? "primary recordwide" : "secondary recordwide"} onClick={recording ? stopRecording : startRecording}>{recording ? <MicOff /> : <Mic />} {recording ? `Stop recording · ${recordSeconds}s` : "Start continuous speaking"}</button>
+            <textarea value={transcript} onChange={(event) => setTranscript(event.target.value)} placeholder={`Your ${language} transcript appears here. You can also type if speech recognition is unavailable.`} />
+            {notice && <p className="fluencynotice" role="status">{notice}</p>}
+            <button type="button" className="primary full" onClick={stage === 3 ? completeSprint : advance}>{stage === 3 ? "Finish and schedule retrieval" : "Move to a new situation"} <ArrowRight /></button>
+          </>
+        )}
+        <p className="researchnote"><ShieldCheck /> Designed around comprehensible input, skill automatization, pushed output, task repetition, and spaced retrieval—not mindless repetition.</p>
+      </section>
+    </main>
   );
 }
 
