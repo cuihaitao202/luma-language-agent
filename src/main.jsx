@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { RealtimePcmAudio } from "./realtime-audio.js";
+import AudioCapture from "./AudioCapture.jsx";
 import {
   ArrowRight,
   AudioLines,
@@ -801,6 +802,7 @@ function App() {
   const [listening, setListening] = useState(false);
   const [spoken, setSpoken] = useState("");
   const [speechNotice, setSpeechNotice] = useState("");
+  const [showRecorder, setShowRecorder] = useState(false);
   const [done, setDone] = useState(false);
   const [seconds, setSeconds] = useState(180);
   const [callSettings, setCallSettings] = useState(() =>
@@ -888,42 +890,7 @@ function App() {
     u.rate = 0.86;
     speechSynthesis.speak(u);
   };
-  const listen = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setSpeechNotice(
-        "Voice recognition is unavailable here. Type your answer below or use the sample.",
-      );
-      return;
-    }
-    try {
-      const r = new SR();
-      r.lang = practiceContent[profile?.target]?.lang || "es-ES";
-      r.interimResults = false;
-      r.maxAlternatives = 1;
-      r.onstart = () => {
-        setSpeechNotice("Listening… speak one sentence now.");
-        setListening(true);
-      };
-      r.onend = () => setListening(false);
-      r.onerror = () => {
-        setListening(false);
-        setSpeechNotice(
-          "The microphone could not start. Type your answer below or use the sample.",
-        );
-      };
-      r.onresult = (e) => {
-        setSpoken(e.results[0][0].transcript);
-        setSpeechNotice("Got it — you can edit the transcript before sending.");
-      };
-      r.start();
-    } catch {
-      setListening(false);
-      setSpeechNotice(
-        "The microphone could not start. Type your answer below or use the sample.",
-      );
-    }
-  };
+  const listen = () => setShowRecorder(true);
   const saveProfile = (p) => {
     localStorage.setItem("luma-profile", JSON.stringify(p));
     setProfile(p);
@@ -1055,28 +1022,44 @@ function App() {
     }
     setIncomingCall(false);
   };
+  const recorder = (
+    <AudioCapture
+      open={showRecorder}
+      language={profile?.target || "English"}
+      vocabulary={Object.values(learnerModel?.memories || {}).map(item => item.term || item.phrase).filter(Boolean)}
+      close={() => { setShowRecorder(false); setListening(false); }}
+      complete={(transcript) => {
+        setSpoken(transcript);
+        setSpeechNotice("已识别完整回答；发送前可以直接修改文字，或再次录音。");
+        setListening(false);
+      }}
+    />
+  );
   if (view === "lesson")
     return (
-      <Lesson
-        profile={profile}
-        step={lesson}
-        setStep={setLesson}
-        back={() => {
-          setView("home");
-          setLesson(0);
-        }}
-        say={say}
-        listen={listen}
-        listening={listening}
-        speechNotice={speechNotice}
-        spoken={spoken}
-        setSpoken={setSpoken}
-        done={done}
-        setDone={setDone}
-        seconds={seconds}
-        learnerModel={learnerModel}
-        captureEvidence={captureEvidence}
-      />
+      <>
+        <Lesson
+          profile={profile}
+          step={lesson}
+          setStep={setLesson}
+          back={() => {
+            setView("home");
+            setLesson(0);
+          }}
+          say={say}
+          listen={listen}
+          listening={listening}
+          speechNotice={speechNotice}
+          spoken={spoken}
+          setSpoken={setSpoken}
+          done={done}
+          setDone={setDone}
+          seconds={seconds}
+          learnerModel={learnerModel}
+          captureEvidence={captureEvidence}
+        />
+        {recorder}
+      </>
     );
   if (view === "memory")
     return (
@@ -1540,6 +1523,112 @@ function Home({
     profile?.target || "Spanish",
     learnerModel,
   );
+  const recentTerms = recentLookupHistory(learnerModel, 3);
+  const professionalScenarios = [
+    {
+      id: "waveguide-tradeoff", icon: "◈", title: "PVG vs. SRG design review",
+      subtitle: "Explain optical and manufacturing trade-offs",
+      relationship: "an optical engineering lead", channel: "design review", register: "technical and precise",
+      pressure: "the lead challenges your assumptions about efficiency, eyebox, process tolerance, and yield",
+      mission: "Compare PVG and SRG, defend one design choice, then answer a skeptical follow-up with evidence.",
+    },
+    {
+      id: "process-debug", icon: "⌁", title: "Waveguide yield investigation",
+      subtitle: "Diagnose NIL, residual layer, CD and metrology issues",
+      relationship: "process, equipment, and quality engineers", channel: "root-cause meeting", register: "concise technical",
+      pressure: "the team needs a prioritized hypothesis and a measurable next experiment",
+      mission: "Describe the symptom, connect it to process variables, rank causes, and propose a validation plan.",
+    },
+    {
+      id: "ar-pitch", icon: "↗", title: "AR glasses product pitch",
+      subtitle: "Translate engineering value into customer language",
+      relationship: "a buyer or crowdfunding backer", channel: "product demo and Q&A", register: "clear and persuasive",
+      pressure: "the listener interrupts with questions about comfort, image quality, price, and credibility",
+      mission: "Explain one differentiator without jargon, support it with proof, and handle an objection naturally.",
+    },
+  ];
+  return (
+    <main className="teacherShell">
+      <nav className="teachernav">
+        <div className="brand"><span className="brandmark">L</span><span>Luma Teacher</span></div>
+        <div className="navright">
+          <span className="streak"><Flame size={15} fill="currentColor" />{studyStreak ? `${studyStreak} 天连续` : "今天开始"}</span>
+          <button type="button" className="languagepill" onClick={configure}><Globe2 /> {profile?.target || "English"}</button>
+          <button type="button" className="avatar" onClick={controls} aria-label="学习设置"><Settings2 size={17} /></button>
+        </div>
+      </nav>
+
+      <section className="teacherhero">
+        <div className="todaybrief">
+          <span className="kicker">今天的私人课程 · {profile?.minutes || 3} 分钟</span>
+          <h1>{todayMission?.scene || "把专业英语说出来"}</h1>
+          <p>{todayMission?.task || "听懂一个真实问题，给出观点、理由和例子，再把同一表达迁移到新情境。"}</p>
+          <div className="briefsteps">
+            <span><b>1</b> 听懂真实语速</span><span><b>2</b> 连续回答</span><span><b>3</b> 只纠正一个关键点</span>
+          </div>
+          <button type="button" className="primary teacherprimary" onClick={start}>继续今天的课程 <ArrowRight /></button>
+        </div>
+        <div className="liveTeacherCard">
+          <span className="livebadge"><i /> 真人教师式自由对话</span>
+          <h2>想聊什么，就从哪里开始。</h2>
+          <p>不背台词。老师会追问、澄清、挑战观点，并自动带入最近不会的词和工作内容。</p>
+          <button type="button" className="callteacher" onClick={answerCall}><AudioLines /> 开始实时对话</button>
+          <small>麦克风保持开启 · 可以打断 · {callDone ? "今天已练过" : "今天尚未完成"}</small>
+        </div>
+      </section>
+
+      <section className="teacherTools" aria-label="Core learning tools">
+        <button type="button" onClick={lookup}>
+          <span className="toolicon"><BookOpen /></span><span><b>查词与拍照翻译</b><small>词典释义、音标、例句、搭配、发音与口语练习</small></span><ArrowRight />
+        </button>
+        <button type="button" onClick={review}>
+          <span className="toolicon"><Repeat2 /></span><span><b>具体复习题</b><small>{reviewQueue.length ? `${dueReviewCount || reviewQueue.length} 个知识盲区待复习` : "用翻译、听辨、填空和情境回答巩固"}</small></span><ArrowRight />
+        </button>
+        <button type="button" onClick={fluency}>
+          <span className="toolicon"><AudioLines /></span><span><b>快速听说训练</b><small>听懂 → 跟读 → 复述 → 换情境表达</small></span><ArrowRight />
+        </button>
+        <button type="button" onClick={memory}>
+          <span className="toolicon"><Flame /></span><span><b>能力与进度</b><small>查看听说读写、专业主题和下次复习，不再重复背单词</small></span><ArrowRight />
+        </button>
+      </section>
+
+      <section className="workTraining">
+        <div className="teacherSectionHead">
+          <div><span className="kicker">为你的工作准备</span><h2>今天选一个真实的专业对话</h2></div>
+          <p>每次都要求“观点 + 原因 + 证据/例子 + 取舍”，不会用 yes 或 I don’t know 混过去。</p>
+        </div>
+        <div className="workScenarioGrid">
+          {professionalScenarios.map(scenario => (
+            <button type="button" key={scenario.id} onClick={() => startSocial({ ...scenario, locale: "international technical workplace" })}>
+              <span>{scenario.icon}</span><div><b>{scenario.title}</b><small>{scenario.subtitle}</small></div><ArrowRight />
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="teacherStatus">
+        <div>
+          <span className="kicker">最近的知识盲区</span>
+          <h2>{recentTerms.length ? recentTerms.map(item => item.term || item.query).join(" · ") : "查过的词和句子会自动进入课程"}</h2>
+          <p>{action.reason} 下一次训练会换情境要求你主动提取，而不是再看一遍释义。</p>
+          <div className="statusactions"><button type="button" onClick={review}>开始复习</button><button type="button" onClick={lookup}>打开最近查询</button></div>
+        </div>
+        <div className={`reminderSummary ${callSettings.enabled && !reminderActive ? "warning" : ""}`}>
+          <span><Bell /></span><div><b>{callSettings.enabled ? `每日 ${callSettings.time} 提醒` : "每日对话提醒未开启"}</b><small>{reminderActive ? "手机后台通知已连接" : "需要完成手机通知设置"}</small></div>
+          <button type="button" onClick={setupCall}>{callSettings.enabled ? "管理" : "开启"}</button>
+        </div>
+      </section>
+
+      <nav className="teacherBottomNav" aria-label="Main navigation">
+        <button type="button" className="active"><Sparkles /><span>今天</span></button>
+        <button type="button" onClick={answerCall}><AudioLines /><span>对话</span></button>
+        <button type="button" onClick={lookup}><BookOpen /><span>词典</span></button>
+        <button type="button" onClick={review}><Repeat2 /><span>复习</span></button>
+        <button type="button" onClick={memory}><Flame /><span>进度</span></button>
+      </nav>
+    </main>
+  );
+  /* Legacy showcase retained below for reference but no longer rendered. */
   return (
     <main className="shell">
       <nav>
@@ -2543,6 +2632,7 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
   const [recognitionConfidence, setRecognitionConfidence] = useState(null);
   const [learnerTurns, setLearnerTurns] = useState(0);
   const [speechMode, setSpeechMode] = useState("target");
+  const [showRecorder, setShowRecorder] = useState(false);
   const prompt = coachPrompts[profile?.target] || coachPrompts.English;
   const voiceTargets = selectMissionTargets(learnerModel, localDay());
   const baseScenario = socialScenario
@@ -2585,48 +2675,8 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
     speakCoach(prompt.text);
   };
   const listen = (mode = speechMode) => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setCallNotice(
-        "Voice recognition is unavailable here. Type below or use the sample.",
-      );
-      return;
-    }
-    try {
-      const r = new SR();
-      const configuredNativeLocale = speechLocaleFor(profile?.nativeLanguage || "");
-      const browserLocale = navigator.language || "zh-CN";
-      r.lang = mode === "native"
-        ? (configuredNativeLocale === "en-US" && browserLocale.toLowerCase().startsWith("zh") ? browserLocale : configuredNativeLocale)
-        : prompt.lang;
-      r.onstart = () => {
-        setListening(true);
-        setCallNotice(mode === "native" ? `正在用${profile?.nativeLanguage || "中文"}识别你的求助…` : `Listening in ${profile?.target || "the target language"}…`);
-      };
-      r.onend = () => setListening(false);
-      r.onerror = () => {
-        setListening(false);
-        setCallNotice(
-          "The microphone could not start. Type below or use the sample.",
-        );
-      };
-      r.onresult = (e) => {
-        const result = e.results[0][0];
-        setSpoken(result.transcript);
-        setRecognitionConfidence(
-          Number.isFinite(result.confidence) ? result.confidence : null,
-        );
-        setCallNotice(mode === "native"
-          ? "已识别母语内容。发送后，Luma 会先理解你的意思，再教你怎样用目标语言表达。"
-          : "I captured your words. Check the transcript, then send it for coaching.");
-      };
-      r.start();
-    } catch {
-      setListening(false);
-      setCallNotice(
-        "The microphone could not start. Type below or use the sample.",
-      );
-    }
+    setSpeechMode(mode);
+    setShowRecorder(true);
   };
   const respond = async (intent = "respond") => {
     if (intent === "respond" && (/[㐀-鿿]/.test(spoken) || speechMode === "native")) intent = "bridge";
@@ -2761,6 +2811,17 @@ function CoachCall({ profile, settings, complete, miss, learnerModel, captureEvi
     );
   return (
     <div className="incoming calllive">
+      <AudioCapture
+        open={showRecorder}
+        language={speechMode === "native" ? (profile?.nativeLanguage || "Mandarin Chinese") : (profile?.target || "English")}
+        vocabulary={voiceTargets.map(item => item.term).filter(Boolean)}
+        close={() => { setShowRecorder(false); setListening(false); }}
+        complete={(transcript) => {
+          setSpoken(transcript);
+          setRecognitionConfidence(null);
+          setCallNotice("已识别完整回答；发送前可以修改文字。");
+        }}
+      />
       <div className="livehead">
         <span className="pulse"></span>
         <b>Luma · {socialScenario ? socialScenario.title : "live coach"}</b>
@@ -2968,7 +3029,7 @@ function FluencySprint({ profile, learnerModel, back, call, captureEvidence }) {
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [notice, setNotice] = useState("");
-  const recognitionRef = useRef(null);
+  const [showRecorder, setShowRecorder] = useState(false);
   const targets = selectMissionTargets(learnerModel, localDay());
   const targetPhrase = targets[0]?.term || (profile?.target === "English" ? "what matters most is" : practiceContent[profile?.target]?.chunk || "a useful phrase");
   const domain = profile?.domain || "a real challenge from today";
@@ -2989,7 +3050,6 @@ function FluencySprint({ profile, learnerModel, back, call, captureEvidence }) {
     const timer = setInterval(() => setRecordSeconds((value) => value + 1), 1000);
     return () => clearInterval(timer);
   }, [recording]);
-  useEffect(() => () => recognitionRef.current?.stop?.(), []);
 
   const playModel = (rate = 0.84) => {
     speechSynthesis.cancel();
@@ -2999,29 +3059,12 @@ function FluencySprint({ profile, learnerModel, back, call, captureEvidence }) {
     speechSynthesis.speak(utterance);
   };
   const startRecording = () => {
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) {
-      setNotice("Continuous speech recognition is unavailable here. Type your retelling below; it still enters the memory loop.");
-      return;
-    }
-    recognitionRef.current?.stop?.();
-    const recognition = new Recognition();
-    recognition.lang = speechLocale;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-    recognition.onstart = () => { setRecording(true); setRecordSeconds(0); setNotice("Keep going. A pause is allowed; stop only when your meaning is complete."); };
-    recognition.onend = () => setRecording(false);
-    recognition.onerror = () => { setRecording(false); setNotice("The microphone stopped. Keep the captured text or continue by typing."); };
-    recognition.onresult = (event) => {
-      let value = "";
-      for (let index = 0; index < event.results.length; index += 1) value += `${event.results[index][0].transcript} `;
-      setTranscript(value.trim());
-    };
-    recognitionRef.current = recognition;
-    recognition.start();
+    setShowRecorder(true);
+    setRecording(true);
+    setRecordSeconds(0);
+    setNotice("录音只有在你按下停止时才结束，停顿不会截断回答。");
   };
-  const stopRecording = () => recognitionRef.current?.stop?.();
+  const stopRecording = () => setShowRecorder(false);
   const advance = () => {
     if (stage >= 2) {
       const enough = language === "English"
@@ -3071,6 +3114,13 @@ function FluencySprint({ profile, learnerModel, back, call, captureEvidence }) {
 
   return (
     <main className="fluencyshell">
+      <AudioCapture
+        open={showRecorder}
+        language={language}
+        vocabulary={[targetPhrase, ...targets.map(item => item.term)].filter(Boolean)}
+        close={() => { setShowRecorder(false); setRecording(false); }}
+        complete={(value) => { setTranscript(value); setRecording(false); setNotice("完整回答已转写，可以修改后继续。"); }}
+      />
       <header className="fluencynav">
         <button type="button" className="iconbtn" onClick={back} aria-label="Back home"><ChevronLeft /></button>
         <div className="fluencyprogress">{steps.map((item, index) => <i key={item.title} className={index <= stage ? "active" : ""} />)}</div>
@@ -3994,7 +4044,17 @@ function ContextLookup({ profile, learnerModel, back, save }) {
               </div>
               <article className="meaningprimary"><span>Meaning in {translationLanguage}</span><h3>{result.contextualMeaning}</h3><p>{result.nativeExplanation}</p></article>
               <div className="meaningpair"><article><span>Plain {profile?.target || "language"}</span><p>{result.plainExplanation}</p></article><article><span>Dictionary ≠ context</span><p>{result.dictionaryContrast}</p></article></div>
-              <article><span className="resultlabel">Natural example</span><p className="exampleline">{result.naturalExample}</p></article>
+              <article className="dictionaryExamples"><span className="resultlabel">Examples · 点击听目标语言发音</span>
+                {[result.naturalExample, ...(result.examples || [])].filter(Boolean).slice(0, 3).map((example, index) => (
+                  <button type="button" key={`${example}-${index}`} onClick={() => {
+                    speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(example);
+                    utterance.lang = speechLocaleForLanguage(profile?.target || "English");
+                    utterance.rate = 0.82;
+                    speechSynthesis.speak(utterance);
+                  }}><span><b>{index + 1}</b>{example}</span><Volume2 /></button>
+                ))}
+              </article>
               <article><span className="resultlabel">Words it naturally travels with</span><div className="collocations">{result.commonCollocations?.map((item) => <span key={item}>{item}</span>)}</div></article>
               <article><span className="resultlabel">Usage note</span><p>{result.usageNote}</p>{result.ambiguityNote && <small>{result.ambiguityNote}</small>}</article>
               <article className="retrievalcard"><span>Later—not another flashcard</span><p>{result.retrievalPrompt}</p><small>Luma saved this meaning and will make you reconstruct and use it in a new context.</small></article>
@@ -4012,6 +4072,37 @@ function Memory({ profile, learnerModel, back, start, review }) {
   const action = nextBestAction(learnerModel);
   const reviewQueue = lookupReviewQueue(learnerModel, Date.now(), 10);
   const dueCount = reviewQueue.filter((item) => item.due).length;
+  const skillScore = (skill) => {
+    const row = learnerModel?.skills?.[skill];
+    return row?.evidence ? Math.round(Number(row.estimate || 0) * 100) : 0;
+  };
+  const domainCounts = memories.reduce((map, item) => {
+    const domain = item.lookup?.detectedDomain || item.contexts?.at(-1) || "General";
+    map[domain] = (map[domain] || 0) + 1;
+    return map;
+  }, {});
+  return (
+    <main className="progressShell">
+      <nav><button className="iconbtn" onClick={back}><ChevronLeft /></button><div className="brand"><span className="brandmark">L</span><span>能力与进度</span></div><button className="languagepill" onClick={start}>开始训练</button></nav>
+      <section className="progressHero">
+        <span className="kicker">不是单词列表，而是会不会用</span>
+        <h1>你的 {profile?.target || "English"}<br /><em>正在变得自动。</em></h1>
+        <p>这里仅展示能力证据、薄弱点和下一步训练。具体练习在“今天”和“复习”中完成。</p>
+      </section>
+      <section className="skillDashboard">
+        {[["听懂快语速", "listening"], ["连续表达", "speaking"], ["阅读理解", "reading"], ["精准写作", "writing"]].map(([label, skill]) => (
+          <article key={skill}><span>{label}</span><b>{skillScore(skill) || "—"}{skillScore(skill) ? "%" : ""}</b><i><u style={{ width: `${skillScore(skill)}%` }} /></i><small>{skillScore(skill) ? "来自最近的真实任务" : "完成一次任务后开始估算"}</small></article>
+        ))}
+      </section>
+      <section className="progressGrid">
+        <article><span className="kicker">下一步</span><h2>{action.skill === "listening" ? "听懂一段快速专业英语" : "用完整论证回答一个工作问题"}</h2><p>{action.reason}</p><button className="primary" onClick={start}>开始适应性训练 <ArrowRight /></button></article>
+        <article><span className="kicker">间隔复习</span><h2>{dueCount || reviewQueue.length} 个知识盲区待提取</h2><p>用翻译、听辨、填空或情境回应来复习；不会要求你空泛地解释单词。</p><button className="secondary" onClick={review}>打开复习题 <Repeat2 /></button></article>
+        <article><span className="kicker">专业领域覆盖</span><h2>{Object.keys(domainCounts).length || 3} 个工作主题</h2><div className="domainProgress">{Object.entries(domainCounts).slice(0, 6).map(([domain, count]) => <span key={domain}>{domain} <b>{count}</b></span>)}{!Object.keys(domainCounts).length && <><span>PVG / SRG</span><span>制造与设备</span><span>AR 产品与营销</span></>}</div></article>
+        <article><span className="kicker">学习记录</span><h2>{memories.length} 个已捕获盲区</h2><p>每次查词、拍照、说错或求助都会进入计划；掌握后会逐渐减少出现频率。</p><small>数据位置：{profile?.cloudLearning ? "本机 + 云端同步" : "仅本机设备"}</small></article>
+      </section>
+    </main>
+  );
+  /* Previous memory-map prototype is intentionally no longer rendered. */
   return (
     <main className="memoryShell">
       <nav>
@@ -4106,6 +4197,30 @@ function LookupReviewDeck({ profile, learnerModel, back, grade }) {
   const masked = term
     ? source.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "_____")
     : source;
+  const exerciseType = index % 3;
+  const exercise = exerciseType === 0
+    ? {
+        label: "情境填空",
+        title: `把 “${term}” 放回原来的真实句子`,
+        instruction: `读完整句，在空格处填入最自然的 ${profile?.target || "目标语"} 表达。`,
+        prompt: masked || `Use “${term}” in one concrete work sentence.`,
+        placeholder: `写出缺少的词或完整句子…`,
+      }
+    : exerciseType === 1
+      ? {
+          label: "工作情境回答",
+          title: `同事问你这个概念为什么重要，你会怎么回答？`,
+          instruction: `用 ${profile?.target || "目标语"} 说 2–3 句：先给结论，再给原因或例子，并自然使用 “${term}”。`,
+          prompt: lookup.contextualMeaning || lookup.nativeExplanation,
+          placeholder: `先说观点，再补一个原因或例子…`,
+        }
+      : {
+          label: "听懂后复述",
+          title: "先听一句自然表达，再用母语说出它的核心意思",
+          instruction: `不要逐字翻译。听完后，用 ${profile?.nativeLanguage || "母语"} 写出对方真正想表达的意思。`,
+          prompt: "点击播放；尽量不要先看答案。",
+          placeholder: `这句话的核心意思是…`,
+        };
   const listen = () => {
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(lookup.pronunciationText || term);
@@ -4143,11 +4258,20 @@ function LookupReviewDeck({ profile, learnerModel, back, grade }) {
         <span className={`memorystrength ${confidence.toLowerCase()}`}>{confidence}</span>
       </nav>
       <section className="reviewcard">
-        <span className="kicker">REBUILD THE MEANING BEFORE YOU LOOK</span>
-        <h1>{lookup.retrievalPrompt || `What did “${term}” mean in this context?`}</h1>
-        {masked && <blockquote>{masked}</blockquote>}
-        <label htmlFor="review-answer">Say it in {profile?.nativeLanguage || "your strongest language"}, or use it in {profile?.target || "the language you are learning"}.</label>
-        <textarea id="review-answer" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="Type what you remember. Effort matters more than perfection." />
+        <span className="kicker">{exercise.label} · 具体完成一个任务</span>
+        <h1>{exercise.title}</h1>
+        <p className="reviewinstruction">{exercise.instruction}</p>
+        {exerciseType === 2 ? (
+          <button type="button" className="reviewlisten" onClick={() => {
+            speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(lookup.naturalExample || source || term);
+            utterance.lang = speechLocaleForLanguage(profile?.target || "English");
+            utterance.rate = 0.88;
+            speechSynthesis.speak(utterance);
+          }}><Volume2 /> 播放自然语速句子</button>
+        ) : <blockquote>{exercise.prompt}</blockquote>}
+        <label htmlFor="review-answer">你的回答</label>
+        <textarea id="review-answer" value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder={exercise.placeholder} />
         {!revealed ? (
           <button className="primary full" onClick={() => setRevealed(true)}>Reveal and compare <ArrowRight /></button>
         ) : (
