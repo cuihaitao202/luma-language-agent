@@ -2606,9 +2606,14 @@ function RealtimeCoachCall({ profile, settings, complete, miss, learnerModel, ca
           </span>
         </div>
         {phase === "live" && transport === "webrtc" && (
-          <button className="textbtn micfallback" onClick={switchToCompatibilityMic}>
-            Microphone not responding? Use compatibility mode
-          </button>
+          <div className="voiceModeChoices">
+            <button className="textbtn micfallback" onClick={switchToCompatibilityMic}>
+              麦克风无反应？切换兼容通道
+            </button>
+            <button className="textbtn micfallback" onClick={useFallback}>
+              识别不准确？改用完整录音回答
+            </button>
+          </div>
         )}
         {phase === "live" && transport === "websocket" && turns === 0 && (
           <button className="secondary full" onClick={activateCallAudio}>

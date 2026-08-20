@@ -103,6 +103,7 @@ body {
 .dictionaryExamples button b { color: var(--coral); }
 .reviewinstruction { color: var(--muted); line-height: 1.55; }
 .reviewlisten { width: 100%; border: 1px solid #294f3c40; background: var(--sage); padding: 20px; border-radius: 14px; display: flex; justify-content: center; gap: 10px; font-weight: 600; }
+.voiceModeChoices { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
 
 @media (max-width: 800px) {
   .teachernav { height: 64px; padding: 0 18px; }
